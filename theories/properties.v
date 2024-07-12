@@ -2,7 +2,7 @@
 
 From Wasm Require Export datatypes_properties operations typing opsem common.
 From mathcomp Require Import ssreflect ssrfun ssrnat ssrbool eqtype seq.
-From Coq Require Import Bool Program NArith ZArith Wf_nat.
+From Coq Require Import List Bool Program NArith ZArith Wf_nat.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -806,7 +806,7 @@ Proof.
     rewrite Hnth1 Hnth2; f_equal.
     by eapply Heq; eauto.
   }
-  { apply List.Forall2_length in Hall2f.
+  { apply Forall2_length in Hall2f.
     apply List.Forall2_length in Hall2g.
     apply List.nth_error_None in Hnth.
     specialize (List.nth_error_None l2 i) as [_ Hnone1].
