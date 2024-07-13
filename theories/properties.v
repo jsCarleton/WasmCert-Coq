@@ -806,7 +806,7 @@ Proof.
     rewrite Hnth1 Hnth2; f_equal.
     by eapply Heq; eauto.
   }
-  { apply Forall2_length in Hall2f.
+  { apply List.Forall2_length in Hall2f.
     apply List.Forall2_length in Hall2g.
     apply List.nth_error_None in Hnth.
     specialize (List.nth_error_None l2 i) as [_ Hnone1].
