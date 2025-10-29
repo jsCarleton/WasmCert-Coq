@@ -19,9 +19,11 @@ let process_args_and_run verbosity text no_exec max_call_depth srcs func_name sr
           s) srcs in
     let mnames = List.map extract_module_name srcs in
     let* modules = parse_modules verbosity text files in
+    Printf.printf "%d modules\n%!" (List.length modules);
     let starting_host_store = (Execute.StringMap.empty, Execute.StringMap.empty) in
     let starting_store = empty_store_record in
     let* (exts, s) = Execute.instantiate_modules verbosity starting_host_store starting_store mnames modules in
+    Printf.printf "%d functions\n%!" (List.length s.s_funcs);
     let* args = parse_args arg_strings in
     (** Running. *)
     if no_exec then

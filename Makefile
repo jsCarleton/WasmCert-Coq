@@ -1,5 +1,5 @@
 default:
-	opam install .
+	opam install --working-dir .
 
 SHELL := bash
 

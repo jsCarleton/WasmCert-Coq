@@ -18,6 +18,7 @@ From Wasm Require Import
   interpreter_ctx
   type_checker
   pp
+  wz_bb
   host
   simd_execute
   extraction_instance
@@ -51,4 +52,5 @@ Extraction "extract"
   run_parse_module_str
   run_parse_arg
   Extraction_instance
+  bblocks_of_expr
   .
