@@ -29,19 +29,20 @@ Inductive et :=
   | ExprList: list et -> et
   | Node: string -> opdisplay -> list et -> et.
 
-Definition string_of_vart (vart: var_type): string :=
-  match vart with 
-    | Var_parameter => "p" | Var_local => "l" | Var_global => "g" 
-    | Var_temp => "t" | Var_memory => ""
-  end.
-
-Definition string_of_valt (valt: value_type): string :=
-  match valt with 
-    | T_num T_i32 => "n" | T_num T_i64 => "N" | T_num T_f32 => "f" 
-    | T_num T_f64 => "F" | _ => "R"
-  end.
 
 Definition string_of_var (v: var): string :=
+  let string_of_vart (vart: var_type): string :=
+    match vart with 
+      | Var_parameter => "p" | Var_local => "l" | Var_global => "g" 
+      | Var_temp => "t" | Var_memory => ""
+    end
+  in
+  let string_of_valt (valt: value_type): string :=
+    match valt with 
+      | T_num T_i32 => "n" | T_num T_i64 => "N" | T_num T_f32 => "f" 
+      | T_num T_f64 => "F" | _ => "R"
+    end
+  in
   match (vtype v) with 
     | Var_parameter | Var_local | Var_global | Var_temp => (string_of_vart (vtype v)) ++ (string_of_valt (nt v)) ++ (pp.string_of_nat (idx v))
     | Var_memory => (vname v) ++ "[" ++ (pp.string_of_nat (idx v)) ++ "]"

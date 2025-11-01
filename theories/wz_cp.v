@@ -1,7 +1,9 @@
 From Wasm Require Import datatypes.
-(*
-type cp = Bb.bb list
+From Wasm Require Import wz_bb.
 
+
+Definition cp: Type := list bb.
+(*
 (*
   loop_prefix
   for a given loop_exit, a loop_prefix consists of the path (in bblocks) from the start

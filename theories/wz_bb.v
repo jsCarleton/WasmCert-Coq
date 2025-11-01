@@ -5,7 +5,8 @@ From Wasm Require Import datatypes.
 Inductive bb_type :=
   BB_unknown
   | BB_exit_end | BB_exit_return | BB_exit_unreachable
-  | BB_unreachable | BB_block | BB_loop | BB_if | BB_else | BB_end | BB_br | BB_br_if | BB_br_table | BB_return.
+  | BB_unreachable | BB_block | BB_loop | BB_if | BB_else | BB_end | BB_br | BB_br_if 
+  | BB_br_table | BB_return.
 
 Inductive bb : Type :=
 {

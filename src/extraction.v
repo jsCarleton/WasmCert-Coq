@@ -19,6 +19,10 @@ From Wasm Require Import
   type_checker
   pp
   wz_bb
+  wz_et
+  wz_ex
+  wz_cp
+  wz_ssa
   host
   simd_execute
   extraction_instance

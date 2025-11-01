@@ -35,16 +35,16 @@ type execution =
   mutable final:      program_state;            (* the program state after the last instruction of the bb is executed *)
   mutable succ_cond:  Et.et;  (* the expression that must be true in order for the first successor state to be entered *) 
 }
-
-type execution_context =
+*)
+Record execution_context: Type :=
 {
-    w:              Wm.wm;
-    w_e:            Wm.expr;
-    w_state:        program_state;
-    param_types:    Wm.resulttype list;
-    local_types:    Wm.local_type list;
-}
-
+(*    w:              Wm.wm;*)
+    w_e:            expr;
+(*    w_state:        program_state; *)
+    param_types:  list result_type;
+    local_types:    list value_type;
+}.
+(*
 val succ_cond_of_bb:     Wm.wm -> program_state -> Wm.expr -> Et.et -> Et.et
 val empty_program_state: Wm.wm -> Wm.resulttype list -> Wm.local_type list -> program_state
 val reduce_bblock:       Wm.wm -> Wm.expr -> program_state -> program_state * Et.et
