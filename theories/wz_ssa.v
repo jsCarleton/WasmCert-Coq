@@ -1,6 +1,7 @@
 From Wasm Require Import datatypes.
 From Wasm Require Import wz_et wz_ex wz_cp wz_bb.
-
+Require Import Coq.Strings.String.
+Require Import Coq.Lists.List.
 
 Record ssa : Type :=
 {
@@ -9,23 +10,55 @@ Record ssa : Type :=
   (* mutable *) alive:  bool;
 }.
 
+Section Mapi.
+  Variables A B : Type.
+
+  Fixpoint mapi_aux (f : nat -> A -> B) (idx : nat) (l : list A) : list B :=
+    match l with
+    | nil => nil
+    | x :: xs => (f idx x) :: (mapi_aux f (S idx) xs)
+  end.
+
+  Definition mapi (f : nat -> A -> B) (l : list A) : list B :=
+    mapi_aux f 0 l.
+End Mapi.
+
+Definition zero_i32: i32 := Wasm_int.Int32.zero.
+Definition zero_i64: i64 := Wasm_int.Int64.zero.
+Definition zero_f32: f32 := Wasm_float.float_zero f32m.
+Definition zero_f64: f64 := Wasm_float.float_zero f64m.
+
+Definition initial_local_value (nt: value_type): et :=
+    match nt with
+      | T_num T_i32 => Constant (Num_constant (VAL_int32 zero_i32))
+      | T_num T_i64 => Constant (Num_constant (VAL_int64 zero_i64))
+      | T_num T_f32 => Constant (Num_constant (VAL_float32 zero_f32))
+      | T_num T_f64 => Constant (Num_constant (VAL_float64 zero_f64))
+      | T_vec _ | T_ref _ | T_bot => Empty
+    end.
+
+Definition initial_ssa_of_local (idx: nat) (nt: value_type): ssa :=
+  {| result := {| vtype := Var_local; nt := nt; idx := idx; vname := "v" |};
+    etree := initial_local_value nt; 
+    alive := true |}.
+
 Definition ssa_of_codepath (ctx: execution_context) (codepath: cp) (init_locals: bool): list ssa :=
-  let ssa_of_expr' (ctx: execution_context) (e: expr) acc: list ssa :=
+  let ssa_of_expr (ctx: execution_context) (e: expr) acc: list ssa :=
     nil
   in
   let expr_of_bb (ctx: execution_context) (bblock:bb): expr :=
     nil
   in
   let ssa_of_bb (ctx: execution_context) acc (bblock: bb): list ssa :=
-    ssa_of_expr' ctx (expr_of_bb ctx bblock) acc
+    ssa_of_expr ctx (expr_of_bb ctx bblock) acc
   in
-  let initial_ssas_of_locals (idx_offset: nat) (ll: list value_type): list ssa :=
-    nil
+  let initial_ssas_of_locals (ll: list value_type): list ssa :=
+    mapi value_type ssa initial_ssa_of_local ll
   in
   List.fold_left
     (fun acc bb => ssa_of_bb ctx acc bb)
     codepath
-    (if init_locals then (initial_ssas_of_locals (List.length (param_types ctx)) (local_types ctx)) else nil). 
+    (if init_locals then (initial_ssas_of_locals (local_types ctx)) else nil). 
 
 (*
 let ssa_of_op (ctx: execution_context) (acc: ssa list) (op: op_type): ssa list =
@@ -159,36 +192,7 @@ let ssa_of_op (ctx: execution_context) (acc: ssa list) (op: op_type): ssa list =
         etree = Node {op = op.opname; op_disp = Prefix; args = [find_and_kill acc]};
         alive = true} :: acc         
 
-let initial_local_value (nt: valtype): et =
-  match nt with
-  | Numtype I32 -> Constant (Int_value 0)
-  | Numtype I64 -> Constant (Int64_value 0L)
-  | Numtype F32
-  | Numtype F64 -> Constant (Float_value 0.0)
-  | Reftype _   -> failwith "Unexpected type"
-
-let initial_ssa_of_local (nt: valtype) (idx_offset: int) (idx: int): ssa =
-  { result = {vtype = Var_local; nt; idx = idx + idx_offset; vname = ""}; 
-    etree = initial_local_value nt; 
-    alive = true}
-
-let local_type_offset (ll: local_type list) (idx: int): int =
-  List.foldi ~init:0 ~f:(fun idx' acc lt -> if idx' >= idx then acc else acc + lt.n ) ll
-
-let initial_ssas_of_local_type (idx_offset: int) (ll: local_type list) (idx: int) (lt: local_type): ssa list =
-  List.init lt.n ~f:(initial_ssa_of_local lt.v (idx_offset + (local_type_offset ll idx)))
-
-let initial_ssas_of_locals (idx_offset: int) (ll: local_type list): ssa list =
-  List.concat (List.mapi ~f:(initial_ssas_of_local_type idx_offset ll) ll)
-
-let ssa_of_expr' (ctx: execution_context) (e: expr) acc: ssa list =
-  List.fold_left ~f:(ssa_of_op ctx) ~init:acc e
-
-let ssa_of_bb (ctx: execution_context) acc (bblock: Bb.bb): ssa list =
-  ssa_of_expr' ctx (expr_of_bb ctx.w_e bblock) acc
-
 *)
 (*
-val ssa_of_codepath:    Ex.execution_context -> Cp.cp -> bool -> ssa list
 val explode_var:        ssa list -> Et.var -> ssa
 *)

@@ -15,10 +15,8 @@ Record var : Type :=
 }.
 (* expression trees *)
 Inductive constant_value := 
-  | Int_value: nat -> constant_value 
-  | Int64_value: nat -> constant_value
-  | Float_value: float -> constant_value 
-  | String_value: string -> constant_value.
+  | Num_constant: value_num -> constant_value
+  | String_constant: string -> constant_value.
 
 Inductive opdisplay := Infix | Prefix | Function.
 
