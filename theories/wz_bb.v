@@ -1,6 +1,6 @@
 From Coq Require Import Lia Wf_nat.
 From Coq Require Import List.
-From Wasm Require Import datatypes.
+From Wasm Require Import datatypes list_extra.
 
 Inductive bb_type :=
   BB_unknown
@@ -62,6 +62,10 @@ Definition mult_succ_count (bbs: list bb): nat :=
 
 Definition bblocks_of_expr (_: expr): list bb :=
 nil.
+
+Definition expr_of_bb (e: expr) (bblock: bb): expr :=
+  sublist (start_op bblock) ((end_op bblock) - (start_op bblock)) e.
+
 (* 
 val expr_of_bb        : Wm.expr -> bb -> Wm.expr
 val bblocks_of_expr   : Wm.expr -> bb list

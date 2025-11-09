@@ -115,6 +115,20 @@ Definition fold_lefti {A B} (f : nat -> A -> B -> A) (xs : list B) (acc0 : A) : 
       (0, acc0) in
   acc_end.
 
+Fixpoint sublist {X : Type} (start_idx : nat) (len : nat) (l : list X) : list X :=
+  match l with
+  | nil => nil
+  | h :: t =>
+    match start_idx with
+    | O =>
+      match len with
+      | O => nil
+      | S len' => h :: sublist O len' t
+      end
+    | S start_idx' => sublist start_idx' len t
+    end
+  end.
+
 Section Monad.
 
 Import MonadNotation.

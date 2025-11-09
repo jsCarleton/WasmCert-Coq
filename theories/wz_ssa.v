@@ -1,4 +1,4 @@
-From Wasm Require Import datatypes.
+From Wasm Require Import datatypes list_extra.
 From Wasm Require Import wz_et wz_ex wz_cp wz_bb.
 Require Import Coq.Strings.String.
 Require Import Coq.Lists.List.
@@ -9,19 +9,6 @@ Record ssa : Type :=
   (* mutable *) etree:  et;
   (* mutable *) alive:  bool;
 }.
-
-Section Mapi.
-  Variables A B : Type.
-
-  Fixpoint mapi_aux (f : nat -> A -> B) (idx : nat) (l : list A) : list B :=
-    match l with
-    | nil => nil
-    | x :: xs => (f idx x) :: (mapi_aux f (S idx) xs)
-  end.
-
-  Definition mapi (f : nat -> A -> B) (l : list A) : list B :=
-    mapi_aux f 0 l.
-End Mapi.
 
 Definition zero_i32: i32 := Wasm_int.Int32.zero.
 Definition zero_i64: i64 := Wasm_int.Int64.zero.
@@ -43,17 +30,17 @@ Definition initial_ssa_of_local (idx: nat) (nt: value_type): ssa :=
     alive := true |}.
 
 Definition ssa_of_codepath (ctx: execution_context) (codepath: cp) (init_locals: bool): list ssa :=
-  let ssa_of_expr (ctx: execution_context) (e: expr) acc: list ssa :=
+  let ssa_of_op (ctx: execution_context) (acc: list ssa) (op: basic_instruction): list ssa :=
     nil
   in
-  let expr_of_bb (ctx: execution_context) (bblock:bb): expr :=
-    nil
+  let ssa_of_expr (ctx: execution_context) (e: expr) acc: list ssa :=
+    List.fold_left (ssa_of_op ctx) e acc
   in
   let ssa_of_bb (ctx: execution_context) acc (bblock: bb): list ssa :=
-    ssa_of_expr ctx (expr_of_bb ctx bblock) acc
+    ssa_of_expr ctx (expr_of_bb (w_e ctx) bblock) acc
   in
   let initial_ssas_of_locals (ll: list value_type): list ssa :=
-    mapi value_type ssa initial_ssa_of_local ll
+    mapi initial_ssa_of_local ll
   in
   List.fold_left
     (fun acc bb => ssa_of_bb ctx acc bb)
