@@ -10,7 +10,7 @@ Inductive bb_type :=
 
 Inductive bb : Type :=
 {
-          bbindex:  nat;        (* the index of this bb in the list of bblocks, makes things easier to have this *)
+  bbindex:  nat;        (* the index of this bb in the list of bblocks, makes things easier to have this *)
           start_op: nat;        (* index into e of the first op in the expr *)
 (*  mutable *) end_op:   nat;        (* index+1 of the last op in the expr *)
 (*  mutable *) succ:     list bb;    (* bblocks that can be directly reached from this bb *)
