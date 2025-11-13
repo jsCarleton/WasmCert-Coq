@@ -2,6 +2,40 @@ From Coq Require Import Lia Wf_nat.
 From Coq Require Import List.
 From Wasm Require Import datatypes list_extra.
 
+Definition bb_instr: Type := option basic_instruction.
+
+Definition bb_instr_of_basic_instruction (i: basic_instruction): bb_instr :=
+  match i with
+    | BI_unreachable
+    | BI_block _ _
+    | BI_loop _ _
+    | BI_if _ _ _
+    | BI_br _
+    | BI_br_if _
+    | BI_br_table _ _
+    | BI_return => None
+    | _ => Some i
+  end.
+
+Record bb': Type :=
+{ 
+  instrs:  list basic_instruction;
+}.
+
+Definition bb's_of_expr (e: expr): list bb' :=
+  let fix bb's_of_expr' (bb_acc: bb') (bbs_acc: list bb') 
+                        (e: expr): list bb' :=
+    match e with
+      | nil => List.rev bbs_acc
+      | hd::tl =>
+        match bb_instr_of_basic_instruction hd with
+          | None => bb's_of_expr' {| instrs := nil |} ({| instrs := List.rev (instrs bb_acc) |}::bbs_acc) tl
+          | Some i => bb's_of_expr' {| instrs := i::(instrs bb_acc) |} bbs_acc tl
+        end
+      end
+  in
+  bb's_of_expr' {| instrs := nil |} nil e.
+
 Inductive bb_type :=
   BB_unknown
   | BB_exit_end | BB_exit_return | BB_exit_unreachable
