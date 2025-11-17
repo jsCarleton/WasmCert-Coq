@@ -22,19 +22,30 @@ Record bb': Type :=
   instrs:  list basic_instruction;
 }.
 
-Definition bb's_of_expr (e: expr): list bb' :=
-  let fix bb's_of_expr' (bb_acc: bb') (bbs_acc: list bb') 
-                        (e: expr): list bb' :=
-    match e with
-      | nil => List.rev bbs_acc
-      | hd::tl =>
-        match bb_instr_of_basic_instruction hd with
-          | None => bb's_of_expr' {| instrs := nil |} ({| instrs := List.rev (instrs bb_acc) |}::bbs_acc) tl
-          | Some i => bb's_of_expr' {| instrs := i::(instrs bb_acc) |} bbs_acc tl
-        end
-      end
+Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' :=
+  let bb's_of_expr'' (e: expr) (acc: bb'*list bb') : bb'*list bb' :=
+    List.fold_left bb's_of_expr' e acc
   in
-  bb's_of_expr' {| instrs := nil |} nil e.
+    match i with
+      | BI_block _ e1
+      | BI_loop _ e1 =>
+          let e1_acc := bb's_of_expr'' e1 ({| instrs := nil |}, nil) in
+            ({| instrs := nil |},
+              (snd e1_acc) 
+              ++ ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
+      | BI_if _ e1 e2 =>
+          let e2_acc := bb's_of_expr'' e2 ({| instrs := nil |}, nil) in
+          let e1_acc := bb's_of_expr'' e1 ({| instrs := nil |}, nil) in
+            ({| instrs := nil |},
+              (snd e2_acc)
+              ++ (snd e1_acc) 
+              ++ ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
+      | _ => 
+          ({| instrs := i::(instrs (fst acc)) |}, (snd acc))
+  end.
+
+Definition bb's_of_expr (e: expr): list bb' :=
+  snd (List.fold_left bb's_of_expr' e ({| instrs := nil |}, nil)).
 
 Inductive bb_type :=
   BB_unknown
