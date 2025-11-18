@@ -17,10 +17,16 @@ Definition bb_instr_of_basic_instruction (i: basic_instruction): bb_instr :=
     | _ => Some i
   end.
 
-Record bb': Type :=
+Inductive bb': Type :=
 { 
-  instrs:  list basic_instruction;
+  bb_instrs:   list basic_instruction;
+  bb_succ:     list bb';
+  bb_pred:     list bb';
 }.
+
+Definition init_bb (is: list basic_instruction): bb' :=
+  {| bb_instrs := is; bb_succ := nil; bb_pred := nil; |}.
+Definition empty_bb: bb' := init_bb nil.
 
 Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' :=
   let bb's_of_expr'' (e: expr) (acc: bb'*list bb') : bb'*list bb' :=
@@ -29,40 +35,40 @@ Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' 
     match i with
       | BI_block _ e1
       | BI_loop _ e1 =>
-          let e1_acc := bb's_of_expr'' e1 ({| instrs := nil |}, nil) in
-            ({| instrs := nil |},
+          let e1_acc := bb's_of_expr'' e1 (empty_bb, nil) in
+            (empty_bb,
               (snd e1_acc) 
-              ++ ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
+              ++ (init_bb (List.rev (bb_instrs (fst acc)))::(snd acc)))
       | BI_if _ e1 e2 =>
-          let e2_acc := bb's_of_expr'' e2 ({| instrs := nil |}, nil) in
-          let e1_acc := bb's_of_expr'' e1 ({| instrs := nil |}, nil) in
-            ({| instrs := nil |},
+          let e2_acc := bb's_of_expr'' e2 (empty_bb, nil) in
+          let e1_acc := bb's_of_expr'' e1 (empty_bb, nil) in
+            (empty_bb,
               (snd e2_acc)
               ++ (snd e1_acc) 
-              ++ ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
+              ++ (init_bb (List.rev (bb_instrs (fst acc)))::(snd acc)))
     | BI_unreachable
     | BI_br _
     | BI_br_if _
     | BI_br_table _ _
     | BI_return =>
-        ({| instrs := nil |}, ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
+        (init_bb nil, ((init_bb (List.rev (bb_instrs (fst acc))))::(snd acc)))
     | _ => 
-        ({| instrs := i::(instrs (fst acc)) |}, (snd acc))
+        (init_bb (i::(bb_instrs (fst acc))), (snd acc))
   end.
 
 Definition bb's_of_expr (e: expr): list bb' :=
-  let (bb, bbs) := List.fold_left bb's_of_expr' e ({| instrs := nil |}, nil)
+  let (bb, bbs) := List.fold_left bb's_of_expr' e (empty_bb, nil)
   in
-    match instrs bb with
+    match bb_instrs bb with
     | nil => bbs
-    | _ => List.rev (({| instrs := List.rev (instrs bb) |})::(List.rev bbs))
+    | _ => List.rev ((init_bb (List.rev (bb_instrs bb))::(List.rev bbs)))
     end.
 
 (* The simplest basic block *)
 Example simple_bb1 :
 forall (v1:value_num), 
   bb's_of_expr ((BI_const_num v1)::nil)
-  = {| instrs := (BI_const_num v1)::nil |}::nil.
+  = (init_bb ((BI_const_num v1)::nil))::nil.
 Proof.
   reflexivity.
 Qed.
@@ -71,7 +77,7 @@ Qed.
 Example simple_bb2 :
 forall (v1:value_num)(v2:value_num), 
   bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::nil)
-  = {| instrs := (BI_const_num v1)::(BI_const_num v2)::nil |}::nil.
+  = (init_bb ((BI_const_num v1)::(BI_const_num v2)::nil))::nil.
 Proof.
   reflexivity.
 Qed.
@@ -79,18 +85,17 @@ Qed.
 Example simple_bb3 :
 forall (v1:value_num)(v2:value_num)(v3:value_num) x, 
   bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::(BI_br x)::nil)
-  = {| instrs := (BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::nil |}::nil.
+  = (init_bb ((BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::nil))::nil.
 Proof.
   reflexivity.
 Qed.
-
 
 (* Now examples with instructions that terminate a bb *)
 Example branch_bb :
 forall (v1:value_num)(v2:value_num)(v3:value_num) x, 
   bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_br x)::(BI_const_num v3)::nil)
-  = {| instrs := (BI_const_num v1)::(BI_const_num v2)::nil |}
-    ::{| instrs := (BI_const_num v3)::nil |}
+  =   ((init_bb ((BI_const_num v1)::(BI_const_num v2)::nil)))
+    ::((init_bb ((BI_const_num v3)::nil)))
     ::nil.
 Proof.
   reflexivity.
@@ -104,7 +109,7 @@ Admitted.
 
 Lemma bb_of_instr: forall (i: basic_instruction),
     bb_instr_of_basic_instruction i = Some i ->
-    bb's_of_expr (i::nil) = {| instrs := i::nil |}::nil.
+    bb's_of_expr (i::nil) = (init_bb (i::nil))::nil.
 Proof.
 Admitted.
 
