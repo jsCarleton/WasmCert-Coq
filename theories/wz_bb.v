@@ -64,7 +64,7 @@ forall (v1:value_num),
   bb's_of_expr ((BI_const_num v1)::nil)
   = {| instrs := (BI_const_num v1)::nil |}::nil.
 Proof.
-  simpl. reflexivity.
+  reflexivity.
 Qed.
 
 (* A slightly more complicated example*)
@@ -73,7 +73,7 @@ forall (v1:value_num)(v2:value_num),
   bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::nil)
   = {| instrs := (BI_const_num v1)::(BI_const_num v2)::nil |}::nil.
 Proof.
-  simpl. reflexivity.
+  reflexivity.
 Qed.
 
 Example simple_bb3 :
@@ -81,7 +81,7 @@ forall (v1:value_num)(v2:value_num)(v3:value_num) x,
   bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::(BI_br x)::nil)
   = {| instrs := (BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::nil |}::nil.
 Proof.
-  simpl. reflexivity.
+  reflexivity.
 Qed.
 
 
@@ -93,7 +93,7 @@ forall (v1:value_num)(v2:value_num)(v3:value_num) x,
     ::{| instrs := (BI_const_num v3)::nil |}
     ::nil.
 Proof.
-  simpl. reflexivity.
+  reflexivity.
 Qed.
 
 Lemma bb_instr_not_block: forall (i: basic_instruction) (b: block_type) (e: expr),
