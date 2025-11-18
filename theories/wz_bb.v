@@ -40,12 +40,73 @@ Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' 
               (snd e2_acc)
               ++ (snd e1_acc) 
               ++ ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
-      | _ => 
-          ({| instrs := i::(instrs (fst acc)) |}, (snd acc))
+    | BI_unreachable
+    | BI_br _
+    | BI_br_if _
+    | BI_br_table _ _
+    | BI_return =>
+        ({| instrs := nil |}, ({| instrs := List.rev (instrs (fst acc)) |}::(snd acc)))
+    | _ => 
+        ({| instrs := i::(instrs (fst acc)) |}, (snd acc))
   end.
 
 Definition bb's_of_expr (e: expr): list bb' :=
-  snd (List.fold_left bb's_of_expr' e ({| instrs := nil |}, nil)).
+  let (bb, bbs) := List.fold_left bb's_of_expr' e ({| instrs := nil |}, nil)
+  in
+    match instrs bb with
+    | nil => bbs
+    | _ => List.rev (({| instrs := List.rev (instrs bb) |})::(List.rev bbs))
+    end.
+
+(* The simplest basic block *)
+Example simple_bb1 :
+forall (v1:value_num), 
+  bb's_of_expr ((BI_const_num v1)::nil)
+  = {| instrs := (BI_const_num v1)::nil |}::nil.
+Proof.
+  simpl. reflexivity.
+Qed.
+
+(* A slightly more complicated example*)
+Example simple_bb2 :
+forall (v1:value_num)(v2:value_num), 
+  bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::nil)
+  = {| instrs := (BI_const_num v1)::(BI_const_num v2)::nil |}::nil.
+Proof.
+  simpl. reflexivity.
+Qed.
+
+Example simple_bb3 :
+forall (v1:value_num)(v2:value_num)(v3:value_num) x, 
+  bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::(BI_br x)::nil)
+  = {| instrs := (BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::nil |}::nil.
+Proof.
+  simpl. reflexivity.
+Qed.
+
+
+(* Now examples with instructions that terminate a bb *)
+Example branch_bb :
+forall (v1:value_num)(v2:value_num)(v3:value_num) x, 
+  bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_br x)::(BI_const_num v3)::nil)
+  = {| instrs := (BI_const_num v1)::(BI_const_num v2)::nil |}
+    ::{| instrs := (BI_const_num v3)::nil |}
+    ::nil.
+Proof.
+  simpl. reflexivity.
+Qed.
+
+Lemma bb_instr_not_block: forall (i: basic_instruction) (b: block_type) (e: expr),
+  bb_instr_of_basic_instruction i = Some i ->
+  i <> BI_block b e.
+Proof.
+Admitted.
+
+Lemma bb_of_instr: forall (i: basic_instruction),
+    bb_instr_of_basic_instruction i = Some i ->
+    bb's_of_expr (i::nil) = {| instrs := i::nil |}::nil.
+Proof.
+Admitted.
 
 Inductive bb_type :=
   BB_unknown
