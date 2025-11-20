@@ -26,8 +26,8 @@ Inductive bb': Type :=
 }.
 
 Definition init_bb (is: list basic_instruction): bb' :=
-  {| bb_instrs := is; bb_succ := nil; bb_pred := nil; |}.
-Definition empty_bb: bb' := init_bb nil.
+  {| bb_instrs := is; bb_succ := []; bb_pred := []; |}.
+Definition empty_bb: bb' := init_bb [].
 
 Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' :=
   let bb's_of_expr'' (e: expr) (acc: bb'*list bb') : bb'*list bb' :=
@@ -36,13 +36,13 @@ Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' 
     match i with
       | BI_block _ e1
       | BI_loop _ e1 =>
-          let e1_acc := bb's_of_expr'' e1 (empty_bb, nil) in
+          let e1_acc := bb's_of_expr'' e1 (empty_bb, []) in
             (empty_bb,
               (snd e1_acc) 
               ++ (init_bb (List.rev (i::(bb_instrs (fst acc))))::(snd acc)))
       | BI_if _ e1 e2 =>
-          let e2_acc := bb's_of_expr'' e2 (empty_bb, nil) in
-          let e1_acc := bb's_of_expr'' e1 (empty_bb, nil) in
+          let e2_acc := bb's_of_expr'' e2 (empty_bb, []) in
+          let e1_acc := bb's_of_expr'' e1 (empty_bb, []) in
             (empty_bb,
               (snd e2_acc)
               ++ (snd e1_acc) 
@@ -52,18 +52,18 @@ Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' 
     | BI_br_if _
     | BI_br_table _ _
     | BI_return =>
-        (init_bb nil, ((init_bb (List.rev (i::(bb_instrs (fst acc)))))::(snd acc)))
+        (init_bb [], ((init_bb (List.rev (i::(bb_instrs (fst acc)))))::(snd acc)))
     | _ => 
         (init_bb (i::(bb_instrs (fst acc))), (snd acc))
   end.
 
 Definition bb's_of_expr (e: expr): list bb' :=
-  let (bb, bbs) := List.fold_left bb's_of_expr' e (empty_bb, nil)
+  let (bb, bbs) := List.fold_left bb's_of_expr' e (empty_bb, [])
   in
     (* did we wind up having a bb at the end?*)
     match bb_instrs bb with
     (* no, we're done *)
-    | nil => bbs
+    | [] => bbs
     (* yes, add it to the list of bbs*)
     | _ => List.rev ((init_bb (List.rev (bb_instrs bb))::(List.rev bbs)))
     end.
@@ -115,7 +115,7 @@ Admitted.
 
 Lemma bb_of_instr: forall (i: basic_instruction),
     bb_instr_of_basic_instruction i = Some i ->
-    bb's_of_expr (i::nil) = (init_bb (i::nil))::nil.
+    bb's_of_expr ([i]) = [(init_bb ([i]))].
 Proof.
 Admitted.
 
@@ -174,11 +174,11 @@ Definition indexes_of_bbs (bbs: list bb): list nat :=
 
 Definition mult_succ_count (bbs: list bb): nat :=
   List.fold_left
-    (fun a x => match (succ x) with |nil | _::nil => a | _ => a+1 end)
+    (fun a x => match (succ x) with |[] | [_] => a | _ => a+1 end)
     bbs 0.
 
 Definition bblocks_of_expr (_: expr): list bb :=
-nil.
+[].
 
 Definition expr_of_bb (e: expr) (bblock: bb): expr :=
   sublist (start_op bblock) ((end_op bblock) - (start_op bblock)) e.
