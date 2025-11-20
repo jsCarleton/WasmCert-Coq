@@ -1,6 +1,7 @@
 From Coq Require Import Lia Wf_nat.
 From Coq Require Import List.
 From Wasm Require Import datatypes list_extra.
+Import ListNotations.
 
 Definition bb_instr: Type := option basic_instruction.
 
@@ -38,20 +39,20 @@ Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' 
           let e1_acc := bb's_of_expr'' e1 (empty_bb, nil) in
             (empty_bb,
               (snd e1_acc) 
-              ++ (init_bb (List.rev (bb_instrs (fst acc)))::(snd acc)))
+              ++ (init_bb (List.rev (i::(bb_instrs (fst acc))))::(snd acc)))
       | BI_if _ e1 e2 =>
           let e2_acc := bb's_of_expr'' e2 (empty_bb, nil) in
           let e1_acc := bb's_of_expr'' e1 (empty_bb, nil) in
             (empty_bb,
               (snd e2_acc)
               ++ (snd e1_acc) 
-              ++ (init_bb (List.rev (bb_instrs (fst acc)))::(snd acc)))
+              ++ (init_bb (List.rev (i::(bb_instrs (fst acc))))::(snd acc)))
     | BI_unreachable
     | BI_br _
     | BI_br_if _
     | BI_br_table _ _
     | BI_return =>
-        (init_bb nil, ((init_bb (List.rev (bb_instrs (fst acc))))::(snd acc)))
+        (init_bb nil, ((init_bb (List.rev (i::(bb_instrs (fst acc)))))::(snd acc)))
     | _ => 
         (init_bb (i::(bb_instrs (fst acc))), (snd acc))
   end.
@@ -59,44 +60,49 @@ Fixpoint bb's_of_expr' (acc: bb'*list bb') (i: basic_instruction): bb'*list bb' 
 Definition bb's_of_expr (e: expr): list bb' :=
   let (bb, bbs) := List.fold_left bb's_of_expr' e (empty_bb, nil)
   in
+    (* did we wind up having a bb at the end?*)
     match bb_instrs bb with
+    (* no, we're done *)
     | nil => bbs
+    (* yes, add it to the list of bbs*)
     | _ => List.rev ((init_bb (List.rev (bb_instrs bb))::(List.rev bbs)))
     end.
 
 (* The simplest basic block *)
 Example simple_bb1 :
-forall (v1:value_num), 
-  bb's_of_expr ((BI_const_num v1)::nil)
-  = (init_bb ((BI_const_num v1)::nil))::nil.
+forall (v1: value_num), 
+  bb's_of_expr [BI_const_num v1] 
+  = [{| bb_instrs := [BI_const_num v1]; bb_pred := []; bb_succ := [] |}].
 Proof.
   reflexivity.
 Qed.
 
 (* A slightly more complicated example*)
 Example simple_bb2 :
-forall (v1:value_num)(v2:value_num), 
-  bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::nil)
-  = (init_bb ((BI_const_num v1)::(BI_const_num v2)::nil))::nil.
-Proof.
-  reflexivity.
-Qed.
-
-Example simple_bb3 :
-forall (v1:value_num)(v2:value_num)(v3:value_num) x, 
-  bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::(BI_br x)::nil)
-  = (init_bb ((BI_const_num v1)::(BI_const_num v2)::(BI_const_num v3)::nil))::nil.
+forall (v1: value_num) (v2: value_num), 
+  bb's_of_expr [BI_const_num v1; BI_const_num v2]
+  = [{| bb_instrs := [BI_const_num v1; BI_const_num v2]; bb_pred := []; bb_succ := [] |}].
 Proof.
   reflexivity.
 Qed.
 
 (* Now examples with instructions that terminate a bb *)
-Example branch_bb :
-forall (v1:value_num)(v2:value_num)(v3:value_num) x, 
-  bb's_of_expr ((BI_const_num v1)::(BI_const_num v2)::(BI_br x)::(BI_const_num v3)::nil)
-  =   ((init_bb ((BI_const_num v1)::(BI_const_num v2)::nil)))
-    ::((init_bb ((BI_const_num v3)::nil)))
-    ::nil.
+Example branch_bb1 :
+forall v1 v2 v3 l, 
+  bb's_of_expr [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l]
+    = [{| bb_instrs := [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l];
+             bb_pred := []; bb_succ := [] |}].
+Proof.
+  reflexivity.
+Qed.
+
+Example branch_bb2 :
+forall v1 v2 v3 l, 
+  bb's_of_expr [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3]
+  =   [ {| bb_instrs := [BI_const_num v1; BI_const_num v2; BI_br l];
+             bb_pred := []; bb_succ := [] |};
+        {| bb_instrs := [BI_const_num v3];
+             bb_pred := []; bb_succ := [] |}].
 Proof.
   reflexivity.
 Qed.
@@ -104,7 +110,7 @@ Qed.
 Lemma bb_instr_not_block: forall (i: basic_instruction) (b: block_type) (e: expr),
   bb_instr_of_basic_instruction i = Some i ->
   i <> BI_block b e.
-Proof.
+Proof. intros i b e H. compute. intros E.
 Admitted.
 
 Lemma bb_of_instr: forall (i: basic_instruction),
