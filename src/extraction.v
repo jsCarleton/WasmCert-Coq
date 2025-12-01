@@ -23,7 +23,6 @@ From Wasm Require Import
   wz_ex
   wz_cp
   wz_ssa
-  wz_bubble_sort
   host
   simd_execute
   extraction_instance
@@ -58,5 +57,4 @@ Extraction "extract"
   run_parse_arg
   Extraction_instance
   bblocks_of_expr
-  bubble_sort_expr
   .

@@ -129,6 +129,24 @@ Fixpoint sublist {X : Type} (start_idx : nat) (len : nat) (l : list X) : list X 
     end
   end.
 
+Fixpoint last_of_list {A : Type} (l : list A) : option A :=
+  match l with
+  | nil => None
+  | x :: nil => Some x
+  | _ :: tl =>  last_of_list tl
+  end.
+
+Fixpoint findi_aux {A : Type} (P: A -> bool) (l : list A) (idx : nat) : option nat :=
+match l with
+| nil => None
+| x :: xs =>
+  if P x then Some idx
+  else findi_aux P xs (S idx)
+end.
+
+Definition findi {A : Type} (P: A -> bool) (l : list A) : option nat :=
+findi_aux P l 0.
+
 Section Monad.
 
 Import MonadNotation.
