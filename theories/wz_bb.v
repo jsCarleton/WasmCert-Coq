@@ -68,10 +68,11 @@ Definition init_bb (idx: nat) (t: bb_t) (nesting: nat) (is: list basic_instructi
 
 Definition empty_bb (idx: nat) (nesting: nat): bb' := init_bb idx BB_code nesting [].
 
-Fixpoint bb's_of_expr' (bbs_prog: bbs_progress) (i: basic_instruction): bbs_progress :=
-  let bb's_of_expr'' (bbs_prog: bbs_progress) (e: expr): bbs_progress :=
+(* bb's_pass1 determines bb_index, bb_type, bb_nesting, bb_instrs *)
+Fixpoint bb's_pass1 (bbs_prog: bbs_progress) (i: basic_instruction): bbs_progress :=
+  let bb's_pass1' (bbs_prog: bbs_progress) (e: expr): bbs_progress :=
     
-    let bbs_prog' := List.fold_left bb's_of_expr' e bbs_prog in
+    let bbs_prog' := List.fold_left bb's_pass1 e bbs_prog in
     let bb_acc    := (p_bb bbs_prog') in
     let bbs_acc   := (p_bbs bbs_prog') in
       (* did we wind up having a bb at the end?*)
@@ -87,7 +88,7 @@ Fixpoint bb's_of_expr' (bbs_prog: bbs_progress) (i: basic_instruction): bbs_prog
     let bbs_acc   := (p_bbs bbs_prog) in
     match i with
       | BI_block b e1 =>
-          let e1_p := bb's_of_expr'' {| p_bb := empty_bb ((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
+          let e1_p := bb's_pass1' {| p_bb := empty_bb ((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
                                         p_bbs := [] |} e1 in
             {| p_bb   := empty_bb (bb_index (p_bb e1_p)) (bb_nesting bb_acc);
                p_bbs  := (p_bbs e1_p)
@@ -96,7 +97,7 @@ Fixpoint bb's_of_expr' (bbs_prog: bbs_progress) (i: basic_instruction): bbs_prog
                                       (bb_nesting bb_acc)
                                       (List.rev ((BI_block b [])::(bb_instrs bb_acc))))::bbs_acc |}
       | BI_loop b e1 =>
-          let e1_p := bb's_of_expr'' {| p_bb := empty_bb((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
+          let e1_p := bb's_pass1' {| p_bb := empty_bb((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
                                         p_bbs := [] |} e1 in
             {| p_bb   := empty_bb (bb_index (p_bb e1_p)) (bb_nesting bb_acc);
                p_bbs  := (p_bbs e1_p)
@@ -105,9 +106,9 @@ Fixpoint bb's_of_expr' (bbs_prog: bbs_progress) (i: basic_instruction): bbs_prog
                                       (bb_nesting bb_acc)
                                       (List.rev ((BI_loop b [])::(bb_instrs bb_acc))))::bbs_acc |}
       | BI_if b e1 e2 =>
-          let e1_p := bb's_of_expr'' {| p_bb := empty_bb((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
+          let e1_p := bb's_pass1' {| p_bb := empty_bb((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
                                         p_bbs := [] |} e1 in
-          let e2_p := bb's_of_expr'' {| p_bb := empty_bb((bb_index (p_bb e1_p))+1) ((bb_nesting (p_bb e1_p))+1);
+          let e2_p := bb's_pass1' {| p_bb := empty_bb((bb_index (p_bb e1_p))+1) ((bb_nesting (p_bb e1_p))+1);
                                         p_bbs := []  |} e1 in
             {| p_bb   := (p_bb e2_p);
                p_bbs  := (p_bbs e2_p) ++ (p_bbs e2_p)
@@ -130,7 +131,16 @@ Fixpoint bb's_of_expr' (bbs_prog: bbs_progress) (i: basic_instruction): bbs_prog
             p_bbs := bbs_acc |}
   end.
 
-Definition succ_of_bbs (bbs: list bb'): list (list nat) :=
+(* bb's_pass isn't really a pass, it adds the syntetic bbs to the list *)
+Definition bb's_pass2 (bbs: list bb'): list bb' :=
+  let i := List.length bbs in
+    bbs ++ [init_bb (i) BB_exit_end         0 [];
+            init_bb (i+1) BB_exit_return      0 [];
+            init_bb (i+2) BB_exit_unreachable 0 []]
+  .
+
+(* bb's pass 3 determines the succ *)
+Definition bb's_pass3 (bbs: list bb'): list (list nat) :=
   let idx_of_else (idx: nat) (n: nat): option nat :=
     let bbs' := sublist idx (List.length bbs - idx) bbs in
       match find (fun b => (bb_nesting b) >= n) bbs' with
@@ -166,7 +176,8 @@ Definition succ_of_bbs (bbs: list bb'): list (list nat) :=
   mapi succ_of_bb bbs.
 
 Definition bb's_of_expr (e: expr): list bb' :=
-  let p := List.fold_left bb's_of_expr' e {| p_bb := empty_bb 0 0; p_bbs := [] |}
+  bb's_pass2 (
+  let p := List.fold_left bb's_pass1 e {| p_bb := empty_bb 0 0; p_bbs := [] |}
   in
     (* did we wind up having a bb at the end?*)
     match bb_instrs (p_bb p) with
@@ -177,14 +188,15 @@ Definition bb's_of_expr (e: expr): list bb' :=
                               BB_code
                               (bb_nesting (p_bb p))
                               (List.rev (bb_instrs (p_bb p))))::(p_bbs p))
-    end.
+    end).
 
 
 (* The simplest basic block *)
 Example simple_bb1 :
 forall (v1: value_num), 
   bb's_of_expr [BI_const_num v1] 
-  = [{| bb_index := 0; bb_type := BB_code; bb_nesting := 0; bb_instrs := [BI_const_num v1]; bb_pred := []; bb_succ := []|}].
+  = bb's_pass2
+      [{| bb_index := 0; bb_type := BB_code; bb_nesting := 0; bb_instrs := [BI_const_num v1]; bb_pred := []; bb_succ := []|}].
 Proof.
   compute. reflexivity.
 Qed.
@@ -195,7 +207,8 @@ Definition i32_of n: i32 := Wasm_int.Int32.repr n.
 Example simple_bb2 :
 forall (v1: value_num) (v2: value_num), 
   bb's_of_expr [BI_const_num v1; BI_const_num v2]
-  = [{| bb_index := 0; bb_type := BB_code; bb_nesting := 0; bb_instrs := [BI_const_num v1; BI_const_num v2]; bb_pred := []; bb_succ := [] |}].
+  = bb's_pass2
+      [{| bb_index := 0; bb_type := BB_code; bb_nesting := 0; bb_instrs := [BI_const_num v1; BI_const_num v2]; bb_pred := []; bb_succ := [] |}].
 Proof.
   reflexivity.
 Qed.
@@ -204,7 +217,8 @@ Qed.
 Example branch_bb1 :
 forall v1 v2 v3 l, 
   bb's_of_expr [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l]
-    = [{| bb_index := 0; bb_type := BB_br; bb_nesting := 0;
+    = bb's_pass2
+      [{| bb_index := 0; bb_type := BB_br; bb_nesting := 0;
           bb_instrs := [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l];
           bb_pred := []; bb_succ := [] |}].
 Proof.
@@ -214,7 +228,8 @@ Qed.
 Example branch_bb2 :
 forall v1 v2 v3 l, 
   bb's_of_expr [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3]
-  =   [ {|  bb_index := 0; bb_type := BB_br; bb_nesting := 0;
+  =   bb's_pass2
+      [ {|  bb_index := 0; bb_type := BB_br; bb_nesting := 0;
             bb_instrs := [BI_const_num v1; BI_const_num v2; BI_br l];
             bb_pred := []; bb_succ := [] |};
         {|  bb_index := 1; bb_type := BB_code; bb_nesting := 0;
@@ -307,7 +322,7 @@ Definition bubble_sort_expr: expr :=
     ]
 ].
 
-Compute succ_of_bbs (bb's_of_expr bubble_sort_expr).
+Compute bb's_pass3 (bb's_of_expr bubble_sort_expr).
 
 Definition bubble_sort_bbs: list bb' :=
 [ init_bb 0 BB_block 0 [BI_block (BT_id 0%num) []];
@@ -396,8 +411,7 @@ Compute List.map (fun x => List.length (bb_instrs x)) (bb's_of_expr bubble_sort_
 Compute List.map (fun x => (bb_nesting x)) bubble_sort_bbs.
 Compute List.map (fun x => (bb_nesting x)) (bb's_of_expr bubble_sort_expr).
 
-
-Example bubble_sort: bb's_of_expr bubble_sort_expr = bubble_sort_bbs.
+Example bubble_sort: bb's_of_expr bubble_sort_expr = bb's_pass2 bubble_sort_bbs.
 Proof.
   compute. reflexivity.
 Qed.
