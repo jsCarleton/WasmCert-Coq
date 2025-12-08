@@ -7,6 +7,7 @@ From mathcomp Require Import ssrnat.
 From Wasm Require Import datatypes list_extra.
 Import ListNotations.
 
+Local Open Scope bool_scope.
 
 Inductive bb_t :=
   | BB_exit_end | BB_exit_return | BB_exit_unreachable
@@ -31,10 +32,14 @@ Definition bb_t_of_instr (i: basic_instruction): bb_t :=
   | _                 => BB_code
   end.
 
+(* This is the definition of bb from the OCaml code. It's only here for reference
+   and to allow some code that needs to be updated to continue to compile.
+   This definition will be deleted when we've completed the work on this module.
+*)
 Inductive bb : Type :=
 {
   bbindex:  nat;        (* the index of this bb in the list of bblocks, makes things easier to have this *)
-          start_op: nat;        (* index into e of the first op in the expr *)
+  start_op: nat;        (* index into e of the first op in the expr *)
 (*  mutable *) end_op:   nat;        (* index+1 of the last op in the expr *)
 (*  mutable *) succ:     list bb;    (* bblocks that can be directly reached from this bb *)
 (*  mutable *) pred:     list bb;    (* bblocks that can directly reach this bb *)
@@ -44,14 +49,16 @@ Inductive bb : Type :=
 (*  mutable *) br_dest:	 option bb;  (* for LOOP, BLOCK and IF instructions the bb that's the target of a branch for this instruction  *)
 }.
 
+(* This is the new definition of bb' for the Rocq code *)
 Inductive bb': Type :=
 {
   bb_index:   nat;
   bb_type:    bb_t;
   bb_nesting: nat;
   bb_instrs:  list basic_instruction;
-  bb_succ:    list bb';
-  bb_pred:    list bb';
+  bb_succ:    list nat;
+  bb_pred:    list nat;
+  bb_br_dest: option nat;
 }.
 
 Record bbs_progress: Type :=
@@ -66,7 +73,18 @@ Definition init_bb (idx: nat) (t: bb_t) (nesting: nat) (is: list basic_instructi
       bb_nesting  := nesting;
       bb_instrs   := is;
       bb_succ     := []; 
-      bb_pred     := [] |}.
+      bb_pred     := [];
+      bb_br_dest  := None |}.
+
+Definition bb_with_br_dest  (i: nat) (b: bb'): bb' :=
+  {|  bb_index    := bb_index b;
+      bb_type     := bb_type b;
+      bb_nesting  := bb_nesting b;
+      bb_instrs   := bb_instrs b;
+      bb_succ     := bb_succ b; 
+      bb_pred     := bb_pred b;
+      bb_br_dest  := Some i |}.
+  
 
 Definition empty_bb (idx: nat) (nesting: nat): bb' := init_bb idx BB_code nesting [].
 
@@ -145,9 +163,15 @@ Definition bb's_pass2 (bbs: list bb'): list bb' :=
 Definition bb's_pass3 (bbs: list bb'): list bb' :=
   let bb's_pass3' (b: bb') :=
     match bb_type b with
-    | BB_br i => b
-    | BB_br_if i => b
-    | BB_br_table is i => b
+    | BB_loop   => bb_with_br_dest ((bb_index b) + 1) b
+    | BB_block 
+    | BB_if     => 
+        match find
+          (fun b' => ((bb_index b') > (bb_index b)) && ((bb_nesting b') <= (bb_nesting b)))
+          bbs with
+        | Some b' => bb_with_br_dest (bb_index b') b
+        | None    => bb_with_br_dest (List.length bbs) b
+        end
     | _ => b
     end
     in
@@ -186,6 +210,7 @@ Definition bb's_pass4 (bbs: list bb'): list (list nat) :=
   mapi succ_of_bb bbs.
 
 Definition bb's_of_expr (e: expr): list bb' :=
+  bb's_pass3 (
   bb's_pass2 (
   let p := List.fold_left bb's_pass1 e {| p_bb := empty_bb 0 0; p_bbs := [] |}
   in
@@ -198,8 +223,7 @@ Definition bb's_of_expr (e: expr): list bb' :=
                               BB_code
                               (bb_nesting (p_bb p))
                               (List.rev (bb_instrs (p_bb p))))::(p_bbs p))
-    end).
-
+    end)).
 
 (* The simplest basic block *)
 Example simple_bb1 :
@@ -328,24 +352,24 @@ Definition bubble_sort_expr: expr :=
 Compute bb's_pass4 (bb's_of_expr bubble_sort_expr).
 
 Definition bubble_sort_bbs: list bb' :=
-[ init_bb 0 BB_block 0 [BI_block (BT_id 0%num) []];
+[ bb_with_br_dest 11 (init_bb 0 BB_block 0 [BI_block (BT_id 0%num) []]);
   init_bb 1 (BB_br_if 0%num) 1 [BI_local_get 0%num;
           BI_const_num (VAL_int32 (i32_of 2));
           BI_relop T_i32 (Relop_i (ROI_lt SX_S));
           BI_br_if 0%num];
-  init_bb 2 BB_loop 1 [BI_local_get 0%num;
+  bb_with_br_dest 3 (init_bb 2 BB_loop 1 [BI_local_get 0%num;
           BI_const_num (VAL_int32 (i32_of (-1)));
           BI_binop T_i32 (Binop_i BOI_add);
           BI_local_tee 2%num;
           BI_local_set 3%num;
           BI_const_num (VAL_int32 (i32_of 0));
           BI_local_set 4%num;
-          BI_loop (BT_id 2%num) []];
-  init_bb 3 BB_block 2 [BI_local_get 3%num;
+          BI_loop (BT_id 2%num) []]);
+  bb_with_br_dest 10 (init_bb 3 BB_block 2 [BI_local_get 3%num;
           BI_local_set 5%num;
           BI_const_num (VAL_int32 (i32_of 0));
           BI_local_set 6%num;
-          BI_block (BT_id 0%num) []];
+          BI_block (BT_id 0%num) []]);
   init_bb 4 (BB_br_if 0%num) 3 [BI_local_get 4%num;
           BI_local_tee 7%num;
           BI_local_get 0%num;
@@ -353,8 +377,8 @@ Definition bubble_sort_bbs: list bb' :=
           BI_const_num (VAL_int32 (i32_of (-2)));
           BI_relop T_i32 (Relop_i (ROI_gt SX_S));
           BI_br_if 0%num];
-  init_bb 5 BB_loop 3 [BI_loop (BT_id 4%num) []];
-  init_bb 6 BB_block 4 [BI_block (BT_id 0%num) []];
+  bb_with_br_dest 6 (init_bb 5 BB_loop 3 [BI_loop (BT_id 4%num) []]);
+  bb_with_br_dest 9 (init_bb 6 BB_block 4 [BI_block (BT_id 0%num) []]);
   init_bb 7 (BB_br_if 0%num) 5 [BI_local_get 1%num;
           BI_local_get 6%num;
           BI_local_tee 3%num;
@@ -413,6 +437,8 @@ Compute List.map (fun x => List.length (bb_instrs x)) bubble_sort_bbs.
 Compute List.map (fun x => List.length (bb_instrs x)) (bb's_of_expr bubble_sort_expr).
 Compute List.map (fun x => (bb_nesting x)) bubble_sort_bbs.
 Compute List.map (fun x => (bb_nesting x)) (bb's_of_expr bubble_sort_expr).
+Compute List.map (fun x => (bb_br_dest x)) (bb's_pass2 bubble_sort_bbs).
+Compute List.map (fun x => (bb_br_dest x)) (bb's_of_expr bubble_sort_expr).
 
 Example bubble_sort: bb's_of_expr bubble_sort_expr = bb's_pass2 bubble_sort_bbs.
 Proof.
