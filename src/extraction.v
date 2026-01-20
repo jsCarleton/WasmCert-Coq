@@ -56,5 +56,5 @@ Extraction "extract"
   run_parse_module_str
   run_parse_arg
   Extraction_instance
-  bblocks_of_expr
+  bbs_of_expr
   .

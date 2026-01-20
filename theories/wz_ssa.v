@@ -188,7 +188,7 @@ Definition ssa_of_codepath (ctx: execution_context) (codepath: cp) (init_locals:
     List.fold_left (ssa_of_op ctx) e acc
   in
   let ssa_of_bb (ctx: execution_context) acc (bblock: bb): list ssa :=
-    ssa_of_expr ctx (expr_of_bb (w_e ctx) bblock) acc
+    ssa_of_expr ctx (expr_of_bb bblock) acc
   in
   let initial_ssas_of_locals (ll: list value_type): list ssa :=
     mapi initial_ssa_of_local ll
