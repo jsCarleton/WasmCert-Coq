@@ -31,7 +31,76 @@ Fixpoint is_bb_expr (is: list basic_instruction): bool :=
   | [] => true
   | x::xa => land (bb_instr_type_of_bi x) = BB_it_body
   end.
- *)  
+ *)
+ 
+Inductive bb_instr_type :=
+  | BB_it_body
+  | BB_it_term.
+
+Definition instr_type (bi : basic_instruction) : bb_instr_type := 
+  match bi with
+  (* instructions that can be in the body of a basic block*)
+  | BI_const_num _
+  | BI_unop _ _
+  | BI_binop _ _
+  | BI_testop _ _
+  | BI_relop _ _
+  | BI_cvtop _ _ _ _
+  | BI_const_vec _
+  | BI_vunop _
+  | BI_vbinop _
+  | BI_vternop _
+  | BI_vtestop _
+  | BI_vshiftop _
+  | BI_splat_vec _
+  | BI_extract_vec _ _ _
+  | BI_replace_vec _ _
+  | BI_ref_null _
+  | BI_ref_is_null
+  | BI_ref_func _
+  | BI_drop
+  | BI_select _
+  | BI_local_get _
+  | BI_local_set _
+  | BI_local_tee _
+  | BI_global_get _
+  | BI_global_set _
+  | BI_table_get _
+  | BI_table_set _
+  | BI_table_size _
+  | BI_table_grow _
+  | BI_table_fill _
+  | BI_table_copy _ _
+  | BI_table_init _ _
+  | BI_elem_drop _
+  | BI_load _ _ _
+  | BI_load_vec _ _
+  | BI_load_vec_lane _ _ _
+  | BI_store _ _ _
+  | BI_store_vec _
+  | BI_store_vec_lane _ _ _
+  | BI_memory_size
+  | BI_memory_grow
+  | BI_memory_fill
+  | BI_memory_copy
+  | BI_memory_init _
+  | BI_data_drop _
+  | BI_nop
+  | BI_call _  (* later, when we implement full program analysis, call and call_indirect will terminate a bb *)
+  | BI_call_indirect _ _ => BB_it_body
+  (* instructions that terminate a basic block *)
+  | BI_unreachable
+  | BI_block _ _
+  | BI_loop _ _
+  | BI_if _ _ _
+  | BI_br _
+  | BI_br_if _
+  | BI_br_table _ _
+  | BI_return
+  | BI_return_call _
+  | BI_return_call_indirect _ _ => BB_it_term                                          
+  end.
+
 Inductive bb_t :=
   | BB_exit_end | BB_exit_return | BB_exit_unreachable
   | BB_block | BB_loop 
@@ -55,6 +124,28 @@ Definition bb_t_of_instr (i: basic_instruction): bb_t :=
   | _                 => BB_code
   end.
 
+Record bb': Type :=
+{
+  bb_instrs:      list basic_instruction;
+  bb_term_instr:  option basic_instruction;
+
+  bb_instrs_constraint: forall i : basic_instruction, In i bb_instrs -> instr_type i = BB_it_body;
+  bb_term_constraint:   forall i : basic_instruction, bb_term_instr = Some i -> instr_type i = BB_it_term;
+}.
+
+Lemma empty_body: forall i : basic_instruction, In i [] -> instr_type i = BB_it_body.
+Proof. intros. contradiction.
+Qed.
+
+Lemma empty_term: forall i : basic_instruction, None = Some i -> instr_type i = BB_it_term.
+Proof. intros. discriminate.
+Qed.
+
+Definition empty_bb: bb' := {|  bb_instrs := []; 
+                                bb_term_instr := None;
+                                bb_instrs_constraint := empty_body;
+                                bb_term_constraint := empty_term;
+                            |}.
 (* basic block - bb *)
 Record bb: Type :=
 {
