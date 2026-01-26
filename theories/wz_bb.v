@@ -126,11 +126,13 @@ Definition bb_t_of_instr (i: basic_instruction): bb_t :=
 
 Record bb': Type :=
 {
-  bb_instrs:      list basic_instruction;
+  bb_instrs':     list basic_instruction;
   bb_term_instr:  option basic_instruction;
 
-  bb_instrs_constraint: forall i : basic_instruction, In i bb_instrs -> instr_type i = BB_it_body;
-  bb_term_constraint:   forall i : basic_instruction, bb_term_instr = Some i -> instr_type i = BB_it_term;
+  bb_instrs_constraint: forall i : basic_instruction, 
+                          In i bb_instrs' -> instr_type i = BB_it_body;
+  bb_term_constraint:   forall i : basic_instruction, 
+                          bb_term_instr = Some i -> instr_type i = BB_it_term;
 }.
 
 Lemma empty_body: forall i : basic_instruction, In i [] -> instr_type i = BB_it_body.
@@ -141,11 +143,40 @@ Lemma empty_term: forall i : basic_instruction, None = Some i -> instr_type i = 
 Proof. intros. discriminate.
 Qed.
 
-Definition empty_bb: bb' := {|  bb_instrs := []; 
-                                bb_term_instr := None;
-                                bb_instrs_constraint := empty_body;
-                                bb_term_constraint := empty_term;
-                            |}.
+Definition empty_bb': bb' :=
+  {| bb_instrs'            := []; 
+     bb_term_instr         := None;
+     bb_instrs_constraint  := empty_body;
+     bb_term_constraint    := empty_term;
+  |}.
+
+Lemma add_body: forall (b: bb') (i: basic_instruction), instr_type i = BB_it_body
+        -> (forall j: basic_instruction, In j (i::(bb_instrs' b)) -> instr_type j = BB_it_body).
+Proof.
+  intros b i H1 j H2.
+  destruct H2 as [H|H].
+  { rewrite <- H. assumption. }
+  { generalize H. apply (bb_instrs_constraint b). }
+Qed.
+
+Definition add_body_instr (b: bb') (i: basic_instruction) (p: instr_type i = BB_it_body): bb' :=
+{|  bb_instrs'            := i::(bb_instrs' b);
+    bb_term_instr         := bb_term_instr b;
+    bb_instrs_constraint  := add_body b i p;
+    bb_term_constraint    := bb_term_constraint b |}.
+
+Lemma add_term: forall (b: bb') (j: basic_instruction), instr_type j = BB_it_term
+        -> (forall i: basic_instruction, Some j = Some i -> instr_type i = BB_it_term).
+Proof.
+  intros b j H1 i H2. injection H2. intros. rewrite <- H. rewrite H1. reflexivity.
+Admitted.
+
+Definition add_term_instr (b: bb') (i: basic_instruction) (p: instr_type i = BB_it_term): bb' :=
+{|  bb_instrs'            := bb_instrs' b;
+    bb_term_instr         := Some i;
+    bb_instrs_constraint  := bb_instrs_constraint b;
+    bb_term_constraint    := add_term b i p |}.
+
 (* basic block - bb *)
 Record bb: Type :=
 {
