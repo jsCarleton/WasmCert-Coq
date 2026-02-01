@@ -2,42 +2,16 @@ From Coq Require Import Lia Wf_nat.
 From Coq Require Import List.
 From Coq Require Import BinNat Strings.Byte.
 From Coq Require Import ZArith ZArith.Int ZArith.BinInt ZArith.Zpower.
+From Coq Require Import Bool.Bool.
+
+Require Import Coq.Program.Program.
 From compcert Require Integers.
 From mathcomp Require Import ssrnat.
+
 From Wasm Require Import datatypes list_extra.
 Import ListNotations.
 
-Local Open Scope bool_scope.
-(* 
-Inductive bb_instr_type :=
-  | BB_it_body
-  | BB_it_term.
-
-Definition bb_instr_type_of_bi (i: basic_instruction): bb_instr_type :=
-  match i with
-  | BI_unreachable
-  | BI_block _ _
-  | BI_loop _ _
-  | BI_if _ _ _
-  | BI_br _
-  | BI_br_if _
-  | BI_br_table _ _
-  | BI_return         => BB_it_term
-  | _                 => BB_it_body
-  end.
-
-Fixpoint is_bb_expr (is: list basic_instruction): bool :=
-  match is with
-  | [] => true
-  | x::xa => land (bb_instr_type_of_bi x) = BB_it_body
-  end.
- *)
- 
-Inductive bb_instr_type :=
-  | BB_it_body
-  | BB_it_term.
-
-Definition instr_type (bi : basic_instruction) : bb_instr_type := 
+Definition is_body_instr (bi : basic_instruction) : bool := 
   match bi with
   (* instructions that can be in the body of a basic block*)
   | BI_const_num _
@@ -85,9 +59,7 @@ Definition instr_type (bi : basic_instruction) : bb_instr_type :=
   | BI_memory_copy
   | BI_memory_init _
   | BI_data_drop _
-  | BI_nop
-  | BI_call _  (* later, when we implement full program analysis, call and call_indirect will terminate a bb *)
-  | BI_call_indirect _ _ => BB_it_body
+  | BI_nop                      => true                   
   (* instructions that terminate a basic block *)
   | BI_unreachable
   | BI_block _ _
@@ -96,89 +68,120 @@ Definition instr_type (bi : basic_instruction) : bb_instr_type :=
   | BI_br _
   | BI_br_if _
   | BI_br_table _ _
-  | BI_return
+  | BI_return                   => false
+  | BI_call _  (* later, when we implement full program analysis, call and call_indirect will terminate a bb *)
+  | BI_call_indirect _ _        => true
   | BI_return_call _
-  | BI_return_call_indirect _ _ => BB_it_term                                          
+  | BI_return_call_indirect _ _ => false                                          
   end.
 
-Inductive bb_t :=
-  | BB_exit_end | BB_exit_return | BB_exit_unreachable
-  | BB_block | BB_loop 
-  | BB_if 
-  | BB_br : labelidx -> bb_t
-  | BB_br_if : labelidx -> bb_t
-  | BB_br_table : list labelidx -> labelidx -> bb_t
-  | BB_unreachable | BB_return
-  | BB_code.
+Record bb: Type :=
+  {
+    bb_instrs:      list basic_instruction;     (* body of bb *)
+    bb_term_instr:  option basic_instruction;   (* branching instr that terminates bb *)
 
-Definition bb_t_of_instr (i: basic_instruction): bb_t :=
-  match i with
-  | BI_unreachable    => BB_unreachable
-  | BI_block _ _      => BB_unreachable
-  | BI_loop _ _       => BB_loop
-  | BI_if _ _ _       => BB_if
-  | BI_br i           => BB_br i
-  | BI_br_if i        => BB_br_if i
-  | BI_br_table is i  => BB_br_table is i
-  | BI_return         => BB_return
-  | _                 => BB_code
-  end.
+    bb_instrs_constraint:
+    forall i : basic_instruction, 
+        In i bb_instrs -> is_body_instr i = true;
+    bb_term_constraint:
+    forall i : basic_instruction, 
+        bb_term_instr = Some i -> is_body_instr i = false;
+  }.
 
-Record bb': Type :=
-{
-  bb_instrs':     list basic_instruction;
-  bb_term_instr:  option basic_instruction;
+Program Definition empty_bb 
+    : bb :=
+  {| bb_instrs      := [];
+     bb_term_instr  := None |}.
 
-  bb_instrs_constraint: forall i : basic_instruction, 
-                          In i bb_instrs' -> instr_type i = BB_it_body;
-  bb_term_constraint:   forall i : basic_instruction, 
-                          bb_term_instr = Some i -> instr_type i = BB_it_term;
-}.
-
-Lemma empty_body: forall i : basic_instruction, In i [] -> instr_type i = BB_it_body.
-Proof. intros. contradiction.
-Qed.
-
-Lemma empty_term: forall i : basic_instruction, None = Some i -> instr_type i = BB_it_term.
-Proof. intros. discriminate.
-Qed.
-
-Definition empty_bb': bb' :=
-  {| bb_instrs'            := []; 
-     bb_term_instr         := None;
-     bb_instrs_constraint  := empty_body;
-     bb_term_constraint    := empty_term;
+Program Definition add_body_i
+    (i : basic_instruction)
+    (b : bb)
+    (H : is_body_instr i = true) 
+    : bb :=
+  {|
+    bb_instrs     := i :: bb_instrs b;
+    bb_term_instr := bb_term_instr b
   |}.
+  Next Obligation.
+    destruct H0.
+    - rewrite H0 in H. assumption.
+    - apply bb_instrs_constraint in H0. assumption.
+  Qed.
+  Next Obligation.
+    apply bb_term_constraint in H0. assumption.
+  Qed.
 
-Lemma add_body: forall (b: bb') (i: basic_instruction), instr_type i = BB_it_body
-        -> (forall j: basic_instruction, In j (i::(bb_instrs' b)) -> instr_type j = BB_it_body).
-Proof.
-  intros b i H1 j H2.
-  destruct H2 as [H|H].
-  { rewrite <- H. assumption. }
-  { generalize H. apply (bb_instrs_constraint b). }
+Program Definition close_block 
+    (i : basic_instruction)
+    (H : is_body_instr i = false)
+    (b : bb) 
+    : bb :=
+  {|
+    bb_instrs := bb_instrs b;
+    bb_term_instr := Some i
+  |}.
+  Next Obligation.
+    apply bb_instrs_constraint in H0. assumption.
+  Qed.
+
+Program Fixpoint bbs_of_expr'
+    (e    : list basic_instruction)
+    (bbs  : list bb)
+    (b    : bb)
+    : list bb :=
+  match e with
+  | []  =>
+    match bb_instrs b with
+    | [] => bbs
+    | _  => b::bbs
+    end
+  | i::e' =>
+      match is_body_instr i with
+      | true =>   bbs_of_expr' e' bbs (add_body_i i b _)
+      | false =>  (close_block i _ b) :: bbs_of_expr' e' bbs empty_bb
+      end
+  end.
+
+Definition bbs_of_expr (e: expr): list bb := bbs_of_expr' e [] empty_bb.
+
+(* Definition i32_of n: i32 := Wasm_int.Int32.repr n. *)
+
+Definition bb_bodies (bbs: list bb): list (list basic_instruction) :=
+  map (fun x => bb_instrs x) bbs.
+
+Definition bb_terms (bbs: list bb): list (option basic_instruction) :=
+  map (fun x => bb_term_instr x) bbs.
+
+(* a simpl test case *)
+Example simple_bb1 :
+forall (v1: value_num), 
+      bb_bodies (bbs_of_expr [BI_const_num v1]) = [[BI_const_num v1]]
+  /\  bb_terms (bbs_of_expr [BI_const_num v1]) = [None].
+Proof. split. reflexivity. reflexivity.
 Qed.
 
-Definition add_body_instr (b: bb') (i: basic_instruction) (p: instr_type i = BB_it_body): bb' :=
-{|  bb_instrs'            := i::(bb_instrs' b);
-    bb_term_instr         := bb_term_instr b;
-    bb_instrs_constraint  := add_body b i p;
-    bb_term_constraint    := bb_term_constraint b |}.
+(* a slightly more complicated test case *)
+Example simple_bb2 :
+forall (v1: value_num), 
+      bb_bodies (bbs_of_expr [BI_const_num v1; BI_return]) = [[BI_const_num v1]]
+  /\  bb_terms (bbs_of_expr [BI_const_num v1; BI_return]) = [Some BI_return].
+Proof. split. reflexivity. reflexivity.
+Qed.
 
-Lemma add_term: forall (b: bb') (j: basic_instruction), instr_type j = BB_it_term
-        -> (forall i: basic_instruction, Some j = Some i -> instr_type i = BB_it_term).
-Proof.
-  intros b j H1 i H2. injection H2. intros. rewrite <- H. rewrite H1. reflexivity.
-Admitted.
-
-Definition add_term_instr (b: bb') (i: basic_instruction) (p: instr_type i = BB_it_term): bb' :=
-{|  bb_instrs'            := bb_instrs' b;
-    bb_term_instr         := Some i;
-    bb_instrs_constraint  := bb_instrs_constraint b;
-    bb_term_constraint    := add_term b i p |}.
+(* an example with 2 bbs *)
+Example simple_bb3 :
+forall (v1: value_num)(v2: value_num), 
+      bb_bodies (bbs_of_expr
+        [BI_const_num v1; BI_return; BI_const_num v2; BI_return])
+            = [[BI_const_num v1]; [BI_const_num v2]]
+  /\  bb_terms (bbs_of_expr 
+        [BI_const_num v1; BI_return; BI_const_num v2; BI_return]) 
+            = [Some BI_return; Some BI_return].
+Proof. split. reflexivity. reflexivity.
+Qed.
 
 (* basic block - bb *)
-Record bb: Type :=
+(* Record bb: Type :=
 {
   bb_index:   nat;          (* the index of this bb in the list of bblocks *)
   bb_instrs:  list basic_instruction; (* code of the bb *)
@@ -190,7 +193,6 @@ Record bb: Type :=
   bb_br_dest: option nat;   (* for LOOP, BLOCK and IF instructions the bb that's the target 
                                 of a branch for this instruction  *)
 }.
-
 Record bbs_progress: Type :=
 {
     p_bb:       bb;
@@ -216,13 +218,13 @@ Definition bb_with_br_dest  (i: nat) (b: bb): bb :=
       bb_labels   := bb_labels b;
       bb_succ     := bb_succ b; 
       bb_pred     := bb_pred b;
-      bb_br_dest  := Some i |}.
+      bb_br_dest  := Some i |}. *)
   
 
-Definition empty_bb (idx: nat) (nesting: nat): bb := init_bb idx BB_code nesting [] [].
+(* Definition empty_bb (idx: nat) (nesting: nat): bb := init_bb idx BB_code nesting [] []. *)
 
 (* bbs_pass1 determines bb_index, bb_type, bb_nesting, bb_instrs *)
-Fixpoint bbs_pass1 (bbs_prog: bbs_progress) (i: basic_instruction): bbs_progress :=
+(* Fixpoint bbs_pass1 (bbs_prog: bbs_progress) (i: basic_instruction): bbs_progress :=
   let bbs_pass1' (bbs_prog: bbs_progress) (e: expr): bbs_progress :=
     
     let bbs_prog' := List.fold_left bbs_pass1 e bbs_prog in
@@ -374,7 +376,8 @@ Definition bbs_of_expr (e: expr): list bb :=
                               []
                               (List.rev (bb_instrs (p_bb p))))::(p_bbs p))
     end)).
-
+*)
+(* 
 (* The simplest basic block *)
 Example simple_bb1 :
 forall (v1: value_num), 
@@ -644,3 +647,4 @@ Definition mult_succ_count (bbs: list bb): nat :=
     bbs 0.
 
 Definition expr_of_bb (b: bb): expr := bb_instrs b.
+ *)
