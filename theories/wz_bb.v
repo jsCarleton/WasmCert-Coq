@@ -171,31 +171,31 @@ Definition bb_terms (bbs: list bb): list (option basic_instruction) :=
   map (fun x => bb_term_instr x) bbs.
 
 (* a bb with 1 instruction *)
-Example simple_bb1 :
+Example bb_test1 :
 forall (v1: value_num), 
       bb_bodies (bbs_of_expr [BI_const_num v1]) = [[BI_const_num v1]]
   /\  bb_terms (bbs_of_expr [BI_const_num v1]) = [None].
-Proof. split. reflexivity. reflexivity.
+Proof. split; reflexivity.
 Qed.
 
 (* a bb with a body and term instruction *)
-Example simple_bb2 :
+Example bb_test2 :
 forall (v1: value_num), 
       bb_bodies (bbs_of_expr [BI_const_num v1; BI_return]) = [[BI_const_num v1]]
   /\  bb_terms (bbs_of_expr [BI_const_num v1; BI_return]) = [Some BI_return].
-Proof. split. reflexivity. reflexivity.
+Proof. split; reflexivity.
 Qed.
 
 (* a bb with 2 body instructions *)
-Example simple_bb3 :
+Example bb_test3 :
 forall (v1 v2: value_num), 
       bb_bodies (bbs_of_expr [BI_const_num v1; BI_const_num v2]) = [[BI_const_num v1; BI_const_num v2]]
   /\  bb_terms (bbs_of_expr [BI_const_num v1; BI_const_num v2]) = [None].
-Proof. split. reflexivity. reflexivity.
+Proof. split; reflexivity.
 Qed.
 
 (* an example with 2 bbs *)
-Example simple_bb4 :
+Example bb_test4 :
 forall (v1 v2: value_num), 
       bb_bodies (bbs_of_expr
         [BI_const_num v1; BI_return; BI_const_num v2; BI_return])
@@ -203,7 +203,30 @@ forall (v1 v2: value_num),
   /\  bb_terms (bbs_of_expr 
         [BI_const_num v1; BI_return; BI_const_num v2; BI_return]) 
             = [Some BI_return; Some BI_return].
-Proof. split. reflexivity. reflexivity.
+Proof. split; reflexivity.
+Qed.
+
+(* Now examples with instructions that terminate a bb *)
+Example bb_test5 :
+forall v1 v2 v3 l, 
+      bb_bodies (bbs_of_expr
+        [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l])
+            = [[BI_const_num v1; BI_const_num v2; BI_const_num v3]]
+  /\  bb_terms (bbs_of_expr 
+        [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l])
+            = [Some (BI_br l)].
+Proof. split; reflexivity.
+Qed.
+
+Example bb_test6 :
+forall v1 v2 v3 l, 
+      bb_bodies (bbs_of_expr
+        [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3])
+            = [[BI_const_num v1; BI_const_num v2]; [BI_const_num v3]]
+  /\  bb_terms (bbs_of_expr 
+        [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3])
+            = [Some (BI_br l); None].
+Proof. split; reflexivity.
 Qed.
 
 (* basic block - bb *)
@@ -404,42 +427,10 @@ Definition bbs_of_expr (e: expr): list bb :=
     end)).
 *)
 (* 
-(* The simplest basic block *)
-Example simple_bb1 :
-forall (v1: value_num), 
-  bbs_of_expr [BI_const_num v1] 
-  = bbs_pass2 [(init_bb 0 BB_code 0 [] [BI_const_num v1])].
-Proof. reflexivity.
-Qed.
 
 Definition i32_of n: i32 := Wasm_int.Int32.repr n.
 
-(* A slightly more complicated example*)
-Example simple_bb2 :
-forall (v1: value_num) (v2: value_num), 
-  bbs_of_expr [BI_const_num v1; BI_const_num v2]
-  = bbs_pass2
-      [init_bb 0 BB_code 0 [] [BI_const_num v1; BI_const_num v2]].
-Proof. reflexivity.
-Qed.
-
 (* Now examples with instructions that terminate a bb *)
-Example branch_bb1 :
-forall v1 v2 v3 l, 
-  bbs_of_expr [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l]
-    = bbs_pass2
-      [init_bb 0 (BB_br l) 0 [l] [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l]].
-Proof. reflexivity.
-Qed.
-
-Example branch_bb2 :
-forall v1 v2 v3 l, 
-  bbs_of_expr [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3]
-  =   bbs_pass2
-      [ init_bb 0 (BB_br l) 0 [l] [BI_const_num v1; BI_const_num v2; BI_br l];
-        init_bb 1 BB_code 0 [] [BI_const_num v3]].
-Proof. reflexivity.
-Qed.
 
 Definition bubble_sort_expr: expr :=
 [
