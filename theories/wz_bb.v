@@ -75,7 +75,7 @@ Definition is_body_instr (bi : basic_instruction) : bool :=
   | BI_return_call_indirect _ _ => false                                          
   end.
 
-Record bb: Type :=
+  Record bb: Type :=
   {
     bb_instrs:      list basic_instruction;     (* body of bb *)
     bb_term_instr:  option basic_instruction;   (* branching instr that terminates bb *)
@@ -111,15 +111,33 @@ Program Definition add_body_i
     apply bb_term_constraint in H0. assumption.
   Qed.
 
+Program Definition rev_body
+    (b : bb)
+    : bb :=
+  {|
+      bb_instrs := rev (bb_instrs b);
+      bb_term_instr := bb_term_instr b
+  |}.
+  Next Obligation.
+    apply in_rev in H. 
+    apply bb_instrs_constraint in H.
+    assumption.
+  Qed.
+  Next Obligation.
+    apply bb_term_constraint in H.
+    assumption.
+  Qed.
+
 Program Definition close_block 
     (i : basic_instruction)
     (H : is_body_instr i = false)
     (b : bb) 
     : bb :=
-  {|
-    bb_instrs := bb_instrs b;
-    bb_term_instr := Some i
-  |}.
+    rev_body
+    {|
+      bb_instrs := bb_instrs b;
+      bb_term_instr := Some i
+    |}.
   Next Obligation.
     apply bb_instrs_constraint in H0. assumption.
   Qed.
@@ -133,7 +151,7 @@ Program Fixpoint bbs_of_expr'
   | []  =>
     match bb_instrs b with
     | [] => bbs
-    | _  => b::bbs
+    | _  => (rev_body b)::bbs
     end
   | i::e' =>
       match is_body_instr i with
@@ -152,7 +170,7 @@ Definition bb_bodies (bbs: list bb): list (list basic_instruction) :=
 Definition bb_terms (bbs: list bb): list (option basic_instruction) :=
   map (fun x => bb_term_instr x) bbs.
 
-(* a simpl test case *)
+(* a bb with 1 instruction *)
 Example simple_bb1 :
 forall (v1: value_num), 
       bb_bodies (bbs_of_expr [BI_const_num v1]) = [[BI_const_num v1]]
@@ -160,7 +178,7 @@ forall (v1: value_num),
 Proof. split. reflexivity. reflexivity.
 Qed.
 
-(* a slightly more complicated test case *)
+(* a bb with a body and term instruction *)
 Example simple_bb2 :
 forall (v1: value_num), 
       bb_bodies (bbs_of_expr [BI_const_num v1; BI_return]) = [[BI_const_num v1]]
@@ -168,9 +186,17 @@ forall (v1: value_num),
 Proof. split. reflexivity. reflexivity.
 Qed.
 
-(* an example with 2 bbs *)
+(* a bb with 2 body instructions *)
 Example simple_bb3 :
-forall (v1: value_num)(v2: value_num), 
+forall (v1 v2: value_num), 
+      bb_bodies (bbs_of_expr [BI_const_num v1; BI_const_num v2]) = [[BI_const_num v1; BI_const_num v2]]
+  /\  bb_terms (bbs_of_expr [BI_const_num v1; BI_const_num v2]) = [None].
+Proof. split. reflexivity. reflexivity.
+Qed.
+
+(* an example with 2 bbs *)
+Example simple_bb4 :
+forall (v1 v2: value_num), 
       bb_bodies (bbs_of_expr
         [BI_const_num v1; BI_return; BI_const_num v2; BI_return])
             = [[BI_const_num v1]; [BI_const_num v2]]
