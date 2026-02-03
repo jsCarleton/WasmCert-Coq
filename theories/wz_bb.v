@@ -130,8 +130,8 @@ Program Definition rev_body
 
 Program Definition close_block 
     (i : basic_instruction)
-    (H : is_body_instr i = false)
     (b : bb) 
+    (H : is_body_instr i = false)
     : bb :=
     rev_body
     {|
@@ -142,6 +142,14 @@ Program Definition close_block
     apply bb_instrs_constraint in H0. assumption.
   Qed.
 
+(* This is an attempt at converting an [expr] into a [list bb]
+    that recurses on each instruction in the [expr].
+    This approach is a dead-end since handling BI_loop, BI_block and
+    BI_if correctly requires recursion on bbs_of_expr' that
+    Rocq can't determine 
+    The passing test cases below don't have any of these instructions.
+    The bubble sort test case does and this approach can't pass that
+    test case *)
 Program Fixpoint bbs_of_expr'
     (e    : list basic_instruction)
     (bbs  : list bb)
@@ -156,13 +164,14 @@ Program Fixpoint bbs_of_expr'
   | i::e' =>
       match is_body_instr i with
       | true =>   bbs_of_expr' e' bbs (add_body_i i b _)
-      | false =>  (close_block i _ b) :: bbs_of_expr' e' bbs empty_bb
+      (* the next line of code has to handle BI_loop, BI_block,
+          BI_if correctly *)
+      | false => (close_block i b _) :: bbs_of_expr' e' bbs empty_bb
       end
   end.
 
 Definition bbs_of_expr (e: expr): list bb := bbs_of_expr' e [] empty_bb.
 
-(* Definition i32_of n: i32 := Wasm_int.Int32.repr n. *)
 
 Definition bb_bodies (bbs: list bb): list (list basic_instruction) :=
   map (fun x => bb_instrs x) bbs.
@@ -229,6 +238,233 @@ forall v1 v2 v3 l,
 Proof. split; reflexivity.
 Qed.
 
+Example bb_test7 :
+forall v1 v2 v3 l1 l2, 
+      bb_bodies (bbs_of_expr
+        [BI_const_num v1; BI_const_num v2; BI_br l1; BI_const_num v3; BI_br l1])
+            = [[BI_const_num v1; BI_const_num v2]; [BI_const_num v3]]
+  /\  bb_terms (bbs_of_expr 
+        [BI_const_num v1; BI_const_num v2; BI_br l1; BI_const_num v3; BI_br l2])
+            = [Some (BI_br l1); Some (BI_br l2)].
+Proof. split; reflexivity.
+Qed.
+
+(* To resolve the recursion termination of the code above, we use
+    [fold_left] to process the [expr]. This way there's no explicit
+    recursion on the [expr] in the function that processes each instruction.
+    Rocq allows recursion in the BI_loop, BI_block and BI_if cases *)
+
+(* Since the function that we provide to [fold_left] operates on a single
+    instruction at a time it's output is an in-progress [bb] and [list bb].
+*)
+Record bbs_progress: Type :=
+{
+    p_bb:       bb;
+    p_bbs:      list bb;
+}.
+
+(* This is the function that we provide to [fold_left] *)
+Program Fixpoint bbs_pass1 
+    (bbs_prog: bbs_progress) 
+    (i: basic_instruction)
+    : bbs_progress :=
+
+  let bbs_pass1' (bbs_prog: bbs_progress) (e: expr): bbs_progress :=
+    let bbs_prog' := List.fold_left bbs_pass1 e bbs_prog in
+    let bb_acc    := (p_bb bbs_prog') in
+    let bbs_acc   := (p_bbs bbs_prog') in
+      (* did we wind up having a bb at the end?*)
+      match bb_instrs bb_acc with
+      (* no, we're done *)
+      | [] => bbs_prog'
+      (* yes, add it to the list of bbs *)
+      | _ =>  {|  p_bb  := empty_bb; p_bbs := (rev_body bb_acc)::bbs_acc
+              |}
+      end
+  in
+
+    (* bbs_pass1 starts here *)
+    let bb_acc    := (p_bb  bbs_prog) in
+    let bbs_acc   := (p_bbs bbs_prog) in
+    match is_body_instr i with
+    | true => {|  p_bb  := add_body_i i bb_acc _;
+                  p_bbs := bbs_acc |}
+    | false =>
+      match i with
+      | BI_block d_type e1 =>
+          let e1_p := bbs_pass1' {| p_bb := empty_bb; p_bbs := [] |} e1 in
+            {| p_bb   := empty_bb;
+              p_bbs  := (p_bbs e1_p)
+                          ++ (close_block i bb_acc _)::bbs_acc |}
+      | BI_loop _ e1 =>
+          let e1_p := bbs_pass1' {| p_bb := empty_bb; p_bbs := [] |} e1 in
+            {| p_bb   := empty_bb;
+              p_bbs  := (p_bbs e1_p)
+                          ++ (close_block i bb_acc _)::bbs_acc |}
+      | BI_if _ e1 e2 =>
+          let e1_p := bbs_pass1' {| p_bb := empty_bb;
+                                        p_bbs := [] |} e1 in
+          let e2_p := bbs_pass1' {| p_bb := empty_bb;
+                                        p_bbs := []  |} e2 in
+            {| p_bb   := empty_bb;
+               p_bbs  := (p_bbs e2_p) ++ (p_bbs e1_p)
+                          ++ (close_block i bb_acc _)::bbs_acc |}
+      | _ =>
+           {| p_bb  := empty_bb;
+              p_bbs := (close_block i bb_acc _)::bbs_acc |}
+    end
+  end.
+(* Unfortunatey we're left with large number of trivial obligations to
+    satisfy. 
+*)
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+Next Obligation. split. discriminate. split; discriminate. Qed.
+
+Definition bbs_of_expr'' (e: expr): list bb :=
+  let p := List.fold_left
+              bbs_pass1
+              e
+              {| p_bb := empty_bb; p_bbs := [] |}
+  in
+    (* did we wind up having a bb at the end?*)
+    match bb_instrs (p_bb p) with
+    (* no, we're done *)
+    | [] => rev (p_bbs p)
+    (* yes, add it to the list of bbs *)
+    | _ =>  rev ((rev_body (p_bb p))::(p_bbs p))
+    end.
+
+(* a bb with 1 instruction *)
+Example bb_test1' :
+forall (v1: value_num), 
+      bb_bodies (bbs_of_expr'' [BI_const_num v1]) = [[BI_const_num v1]]
+  /\  bb_terms (bbs_of_expr'' [BI_const_num v1]) = [None].
+Proof. split; reflexivity.
+Qed.
+
+(* a bb with a body and term instruction *)
+Example bb_test2' :
+forall (v1: value_num), 
+      bb_bodies (bbs_of_expr'' [BI_const_num v1; BI_return]) = [[BI_const_num v1]]
+  /\  bb_terms (bbs_of_expr'' [BI_const_num v1; BI_return]) = [Some BI_return].
+Proof. split; reflexivity.
+Qed.
+
+(* a bb with 2 body instructions *)
+Example bb_test3' :
+forall (v1 v2: value_num), 
+      bb_bodies (bbs_of_expr'' [BI_const_num v1; BI_const_num v2]) = [[BI_const_num v1; BI_const_num v2]]
+  /\  bb_terms (bbs_of_expr'' [BI_const_num v1; BI_const_num v2]) = [None].
+Proof. split; reflexivity.
+Qed.
+
+Definition i32_of n: i32 := Wasm_int.Int32.repr n.
+
+Definition v1: value_num := VAL_int32 (i32_of 1).
+Definition v2: value_num := VAL_int32 (i32_of 2).
+
+Compute bb_bodies (bbs_of_expr''
+        [BI_const_num v1; BI_return; BI_const_num v2; BI_return]).
+
+(* an example with 2 bbs *)
+Example bb_test4' :
+forall (v1 v2: value_num), 
+      bb_bodies (bbs_of_expr''
+        [BI_const_num v1; BI_return; BI_const_num v2; BI_return])
+            = [[BI_const_num v1]; [BI_const_num v2]]
+  /\  bb_terms (bbs_of_expr'' 
+        [BI_const_num v1; BI_return; BI_const_num v2; BI_return]) 
+            = [Some BI_return; Some BI_return].
+Proof. split; reflexivity.
+Qed.
+
+(* Now examples with instructions that terminate a bb *)
+Example bb_test5' :
+forall v1 v2 v3 l, 
+      bb_bodies (bbs_of_expr''
+        [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l])
+            = [[BI_const_num v1; BI_const_num v2; BI_const_num v3]]
+  /\  bb_terms (bbs_of_expr'' 
+        [BI_const_num v1; BI_const_num v2; BI_const_num v3; BI_br l])
+            = [Some (BI_br l)].
+Proof. split; reflexivity.
+Qed.
+
+Example bb_test6' :
+forall v1 v2 v3 l, 
+      bb_bodies (bbs_of_expr''
+        [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3])
+            = [[BI_const_num v1; BI_const_num v2]; [BI_const_num v3]]
+  /\  bb_terms (bbs_of_expr'' 
+        [BI_const_num v1; BI_const_num v2; BI_br l; BI_const_num v3])
+            = [Some (BI_br l); None].
+Proof. split; reflexivity.
+Qed.
+
+Example bb_test7' :
+forall v1 v2 v3 l1 l2, 
+      bb_bodies (bbs_of_expr''
+        [BI_const_num v1; BI_const_num v2; BI_br l1; BI_const_num v3; BI_br l1])
+            = [[BI_const_num v1; BI_const_num v2]; [BI_const_num v3]]
+  /\  bb_terms (bbs_of_expr'' 
+        [BI_const_num v1; BI_const_num v2; BI_br l1; BI_const_num v3; BI_br l2])
+            = [Some (BI_br l1); Some (BI_br l2)].
+Proof. split; reflexivity.
+Qed.
+
 (* basic block - bb *)
 (* Record bb: Type :=
 {
@@ -242,114 +478,6 @@ Qed.
   bb_br_dest: option nat;   (* for LOOP, BLOCK and IF instructions the bb that's the target 
                                 of a branch for this instruction  *)
 }.
-Record bbs_progress: Type :=
-{
-    p_bb:       bb;
-    p_bbs:      list bb;
-}.
-
-Definition init_bb (idx: nat) (t: bb_t) (nesting: nat) (labels: list labelidx)
-             (is: list basic_instruction): bb :=
-  {|  bb_index    := idx;
-      bb_type     := t;
-      bb_nesting  := nesting;
-      bb_instrs   := is;
-      bb_labels   := labels;
-      bb_succ     := []; 
-      bb_pred     := [];
-      bb_br_dest  := None |}.
-
-Definition bb_with_br_dest  (i: nat) (b: bb): bb :=
-  {|  bb_index    := bb_index b;
-      bb_type     := bb_type b;
-      bb_nesting  := bb_nesting b;
-      bb_instrs   := bb_instrs b;
-      bb_labels   := bb_labels b;
-      bb_succ     := bb_succ b; 
-      bb_pred     := bb_pred b;
-      bb_br_dest  := Some i |}. *)
-  
-
-(* Definition empty_bb (idx: nat) (nesting: nat): bb := init_bb idx BB_code nesting [] []. *)
-
-(* bbs_pass1 determines bb_index, bb_type, bb_nesting, bb_instrs *)
-(* Fixpoint bbs_pass1 (bbs_prog: bbs_progress) (i: basic_instruction): bbs_progress :=
-  let bbs_pass1' (bbs_prog: bbs_progress) (e: expr): bbs_progress :=
-    
-    let bbs_prog' := List.fold_left bbs_pass1 e bbs_prog in
-    let bb_acc    := (p_bb bbs_prog') in
-    let bbs_acc   := (p_bbs bbs_prog') in
-      (* did we wind up having a bb at the end?*)
-      match bb_instrs bb_acc with
-      (* no, we're done *)
-      | [] => bbs_prog'
-      (* yes, add it to the list of bbs *)
-      | _ => {| p_bb  := empty_bb ((bb_index bb_acc)+1) (bb_nesting bb_acc);
-                p_bbs := ((init_bb (bb_index bb_acc) BB_code (bb_nesting bb_acc) [] (List.rev(bb_instrs bb_acc))))::bbs_acc |}
-      end
-    in
-    let bb_acc    := (p_bb  bbs_prog) in
-    let bbs_acc   := (p_bbs bbs_prog) in
-    match i with
-      | BI_block b e1 =>
-          let e1_p := bbs_pass1' {| p_bb := empty_bb ((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
-                                        p_bbs := [] |} e1 in
-            {| p_bb   := empty_bb (bb_index (p_bb e1_p)) (bb_nesting bb_acc);
-               p_bbs  := (p_bbs e1_p)
-                          ++ (init_bb (bb_index bb_acc)
-                                      BB_block
-                                      (bb_nesting bb_acc)
-                                      []
-                                      (List.rev ((BI_block b [])::(bb_instrs bb_acc))))::bbs_acc |}
-      | BI_loop b e1 =>
-          let e1_p := bbs_pass1' {| p_bb := empty_bb((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
-                                        p_bbs := [] |} e1 in
-            {| p_bb   := empty_bb (bb_index (p_bb e1_p)) (bb_nesting bb_acc);
-               p_bbs  := (p_bbs e1_p)
-                          ++ (init_bb (bb_index bb_acc)
-                                      BB_loop
-                                      (bb_nesting bb_acc)
-                                      []
-                                      (List.rev ((BI_loop b [])::(bb_instrs bb_acc))))::bbs_acc |}
-      | BI_if b e1 e2 =>
-          let e1_p := bbs_pass1' {| p_bb := empty_bb((bb_index bb_acc)+1) ((bb_nesting (p_bb bbs_prog))+1);
-                                        p_bbs := [] |} e1 in
-          let e2_p := bbs_pass1' {| p_bb := empty_bb((bb_index (p_bb e1_p))+1) ((bb_nesting (p_bb e1_p))+1);
-                                        p_bbs := []  |} e1 in
-            {| p_bb   := (p_bb e2_p);
-               p_bbs  := (p_bbs e2_p) ++ (p_bbs e2_p)
-                          ++ (init_bb (bb_index (p_bb e2_p))
-                                      BB_if
-                                      (bb_nesting (p_bb e2_p))
-                                      []
-                                      (List.rev ((BI_loop b [])::(bb_instrs bb_acc))))::bbs_acc |}
-    | BI_unreachable
-    | BI_return =>
-        {|  p_bb  := empty_bb ((bb_index bb_acc)+1) (bb_nesting (p_bb bbs_prog));
-            p_bbs := (init_bb (bb_index bb_acc)
-                              (bb_t_of_instr i)
-                              (bb_nesting (p_bb bbs_prog))
-                              []
-                              (List.rev (i::(bb_instrs bb_acc))))::bbs_acc |}
-    | BI_br idx
-    | BI_br_if idx =>
-        {|  p_bb  := empty_bb ((bb_index bb_acc)+1) (bb_nesting (p_bb bbs_prog));
-            p_bbs := (init_bb (bb_index bb_acc)
-                              (bb_t_of_instr i)
-                              (bb_nesting (p_bb bbs_prog))
-                              [idx]
-                              (List.rev (i::(bb_instrs bb_acc))))::bbs_acc |}
-    | BI_br_table is _ =>
-        {|  p_bb  := empty_bb ((bb_index bb_acc)+1) (bb_nesting (p_bb bbs_prog));
-            p_bbs := (init_bb (bb_index bb_acc)
-                              (bb_t_of_instr i)
-                              (bb_nesting (p_bb bbs_prog))
-                              is
-                              (List.rev (i::(bb_instrs bb_acc))))::bbs_acc |}
-    | _ => 
-        {|  p_bb  := init_bb ((bb_index bb_acc)) BB_code (bb_nesting (p_bb bbs_prog)) [] (i::(bb_instrs bb_acc));
-            p_bbs := bbs_acc |}
-  end.
 
 (* bbs_pass2 isn't really a pass, it adds the synthetic bbs to the list *)
 Definition bbs_pass2 (bbs: list bb): list bb :=
@@ -408,27 +536,6 @@ Definition bbs_pass4 (bbs: list bb): list (list nat) :=
     end
   in
   mapi succ_of_bb bbs.
-
-Definition bbs_of_expr (e: expr): list bb :=
-  bbs_pass3 (
-  bbs_pass2 (
-  let p := List.fold_left bbs_pass1 e {| p_bb := empty_bb 0 0; p_bbs := [] |}
-  in
-    (* did we wind up having a bb at the end?*)
-    match bb_instrs (p_bb p) with
-    (* no, we're done *)
-    | [] => List.rev (p_bbs p)
-    (* yes, add it to the list of bbs*)
-    | _ => List.rev ((init_bb ((bb_index (p_bb p)))
-                              BB_code
-                              (bb_nesting (p_bb p))
-                              []
-                              (List.rev (bb_instrs (p_bb p))))::(p_bbs p))
-    end)).
-*)
-(* 
-
-Definition i32_of n: i32 := Wasm_int.Int32.repr n.
 
 (* Now examples with instructions that terminate a bb *)
 
