@@ -276,7 +276,7 @@ Program Fixpoint bbs_pass1
       (* did we wind up having a bb at the end?*)
       match bb_instrs bb_acc with
       (* no, we're done *)
-      | [] => bbs_prog'
+      | [] => bbs_prog' 
       (* yes, add it to the list of bbs *)
       | _ =>  {|  p_bb  := empty_bb; p_bbs := (rev_body bb_acc)::bbs_acc
               |}
@@ -291,24 +291,24 @@ Program Fixpoint bbs_pass1
                   p_bbs := bbs_acc |}
     | false =>
       match i with
-      | BI_block d_type e1 =>
+      | BI_block b1 e1 =>
           let e1_p := bbs_pass1' {| p_bb := empty_bb; p_bbs := [] |} e1 in
             {| p_bb   := empty_bb;
               p_bbs  := (p_bbs e1_p)
-                          ++ (close_block i bb_acc _)::bbs_acc |}
-      | BI_loop _ e1 =>
+                          ++ (close_block (BI_block b1 []) bb_acc _)::bbs_acc |}
+      | BI_loop b1 e1 =>
           let e1_p := bbs_pass1' {| p_bb := empty_bb; p_bbs := [] |} e1 in
             {| p_bb   := empty_bb;
               p_bbs  := (p_bbs e1_p)
-                          ++ (close_block i bb_acc _)::bbs_acc |}
-      | BI_if _ e1 e2 =>
+                          ++ (close_block (BI_loop b1 []) bb_acc _)::bbs_acc |}
+      | BI_if b1 e1 e2 =>
           let e1_p := bbs_pass1' {| p_bb := empty_bb;
                                         p_bbs := [] |} e1 in
           let e2_p := bbs_pass1' {| p_bb := empty_bb;
                                         p_bbs := []  |} e2 in
             {| p_bb   := empty_bb;
                p_bbs  := (p_bbs e2_p) ++ (p_bbs e1_p)
-                          ++ (close_block i bb_acc _)::bbs_acc |}
+                          ++ (close_block (BI_if b1 [] []) bb_acc _)::bbs_acc |}
       | _ =>
            {| p_bb  := empty_bb;
               p_bbs := (close_block i bb_acc _)::bbs_acc |}
@@ -419,6 +419,7 @@ Definition v2: value_num := VAL_int32 (i32_of 2).
 Compute bb_bodies (bbs_of_expr''
         [BI_const_num v1; BI_return; BI_const_num v2; BI_return]).
 
+        
 (* an example with 2 bbs *)
 Example bb_test4' :
 forall (v1 v2: value_num), 
@@ -464,80 +465,6 @@ forall v1 v2 v3 l1 l2,
             = [Some (BI_br l1); Some (BI_br l2)].
 Proof. split; reflexivity.
 Qed.
-
-(* basic block - bb *)
-(* Record bb: Type :=
-{
-  bb_index:   nat;          (* the index of this bb in the list of bblocks *)
-  bb_instrs:  list basic_instruction; (* code of the bb *)
-  bb_type:    bb_t;         (* effectively the control opcode that created this bb *)
-  bb_nesting: nat;          (* nesting level of the last opcode in the bb *)
-  bb_labels:  list labelidx;(* destination labels used in BR, BR_IF, BR_TABLE instructions *)
-  bb_succ:    list nat;     (* bbs that can be directly reached from this bb *)
-  bb_pred:    list nat;     (* bbs that can directly reach this bb *)
-  bb_br_dest: option nat;   (* for LOOP, BLOCK and IF instructions the bb that's the target 
-                                of a branch for this instruction  *)
-}.
-
-(* bbs_pass2 isn't really a pass, it adds the synthetic bbs to the list *)
-Definition bbs_pass2 (bbs: list bb): list bb :=
-  let i := List.length bbs in
-    bbs ++ [init_bb (i)   BB_exit_end         0 [] [];
-            init_bb (i+1) BB_exit_return      0 [] [];
-            init_bb (i+2) BB_exit_unreachable 0 [] []]
-  .
-
-(* bbs_pass3 determines bb_br_dest *)
-Definition bbs_pass3 (bbs: list bb): list bb :=
-  let bbs_pass3' (b: bb) :=
-    match bb_type b with
-    | BB_loop   => bb_with_br_dest ((bb_index b) + 1) b
-    | BB_block 
-    | BB_if     => 
-        match find
-          (fun b' => ((bb_index b') > (bb_index b)) && ((bb_nesting b') <= (bb_nesting b)))
-          bbs with
-        | Some b' => bb_with_br_dest (bb_index b') b
-        | None    => bb_with_br_dest (List.length bbs) b
-        end
-    | _ => b
-    end
-    in
-  List.map bbs_pass3' bbs.
-
-(* bbs_pass_4 determines the succ *)
-Definition bbs_pass4 (bbs: list bb): list (list nat) :=
-  let idx_of_else (idx: nat) (n: nat): option nat :=
-    let bbs' := sublist idx (List.length bbs - idx) bbs in
-      match find (fun b => (bb_nesting b) >= n) bbs' with
-      | None   => None
-      | Some b => Some (bb_index b)
-      end
-  in
-  let succ_of_bb (idx: nat) (b: bb): list nat :=
-    match bb_type b with
-    | BB_exit_end
-    | BB_exit_return
-    | BB_exit_unreachable => []
-    | BB_unreachable      => [(List.length bbs) + 2]
-    | BB_block
-    | BB_loop             
-    | BB_code             => [(bb_index b) + 1]
-    | BB_if               =>
-        let i := idx_of_else (idx+2) (bb_nesting b) in
-        match i with
-        | None => [ idx + 1 ]
-        | Some i => [ idx + 1; i]
-        end  
-    | BB_br _             => [ 0 ]
-    | BB_br_if _          => [ idx + 1; 0 ]
-    | BB_br_table _ _     => [ 0; 0; 0 ]
-    | BB_return           => [(List.length bbs) + 2]
-    end
-  in
-  mapi succ_of_bb bbs.
-
-(* Now examples with instructions that terminate a bb *)
 
 Definition bubble_sort_expr: expr :=
 [
@@ -622,100 +549,177 @@ Definition bubble_sort_expr: expr :=
     ]
 ].
 
-Compute bbs_pass4 (bbs_of_expr bubble_sort_expr).
-
-Definition bubble_sort_bbs: list bb :=
-[ bb_with_br_dest 11 (init_bb 0 BB_block 0 [] [BI_block (BT_id 0%num) []]);
-  init_bb 1 (BB_br_if 0%num) 1 [0%num] [BI_local_get 0%num;
-          BI_const_num (VAL_int32 (i32_of 2));
-          BI_relop T_i32 (Relop_i (ROI_lt SX_S));
-          BI_br_if 0%num];
-  bb_with_br_dest 3 (init_bb 2 BB_loop 1 [] [BI_local_get 0%num;
-          BI_const_num (VAL_int32 (i32_of (-1)));
-          BI_binop T_i32 (Binop_i BOI_add);
-          BI_local_tee 2%num;
-          BI_local_set 3%num;
-          BI_const_num (VAL_int32 (i32_of 0));
-          BI_local_set 4%num;
-          BI_loop (BT_id 2%num) []]);
-  bb_with_br_dest 10 (init_bb 3 BB_block 2 [] [BI_local_get 3%num;
-          BI_local_set 5%num;
-          BI_const_num (VAL_int32 (i32_of 0));
-          BI_local_set 6%num;
-          BI_block (BT_id 0%num) []]);
-  init_bb 4 (BB_br_if 0%num) 3 [0%num] [BI_local_get 4%num;
-          BI_local_tee 7%num;
-          BI_local_get 0%num;
-          BI_binop T_i32 (Binop_i BOI_sub);
-          BI_const_num (VAL_int32 (i32_of (-2)));
-          BI_relop T_i32 (Relop_i (ROI_gt SX_S));
-          BI_br_if 0%num];
-  bb_with_br_dest 6 (init_bb 5 BB_loop 3 [] [BI_loop (BT_id 4%num) []]);
-  bb_with_br_dest 9 (init_bb 6 BB_block 4 [] [BI_block (BT_id 0%num) []]);
-  init_bb 7 (BB_br_if 0%num) 5 [0%num] [BI_local_get 1%num;
-          BI_local_get 6%num;
-          BI_local_tee 3%num;
-          BI_const_num (VAL_int32 (i32_of 2));
-          BI_binop T_i32 (Binop_i BOI_shl);
-          BI_binop T_i32 (Binop_i BOI_add);
-          BI_local_tee 6%num;
-          BI_load T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |};
-          BI_local_tee 4%num;
-          BI_local_get 1%num;
-          BI_local_get 3%num;
-          BI_const_num (VAL_int32 (i32_of 1));
-          BI_binop T_i32 (Binop_i BOI_add);
-          BI_local_tee 3%num;
-          BI_const_num (VAL_int32 (i32_of 2));
-          BI_binop T_i32 (Binop_i BOI_shl);
-          BI_binop T_i32 (Binop_i BOI_add);
-          BI_local_tee 8%num;
-          BI_load T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |};
-          BI_local_tee 9%num;
-          BI_relop T_i32 (Relop_i (ROI_le SX_S));
-          BI_br_if 0%num];
-  init_bb 8 BB_code 5 [] [BI_local_get 6%num;
-          BI_local_get 9%num;
-          BI_store T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |};
-          BI_local_get 8%num;
-          BI_local_get 4%num;
-          BI_store T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |}];
-  init_bb 9 (BB_br_if 0%num) 4 [0%num] [BI_local_get 3%num;
-          BI_local_set 6%num;
-          BI_local_get 3%num;
-          BI_local_get 5%num;
-          BI_relop T_i32 (Relop_i ROI_ne);
-          BI_br_if 0%num];
-  init_bb 10 (BB_br_if 0%num) 1 [0%num] [BI_local_get 5%num;
-          BI_const_num (VAL_int32 (i32_of (-1)));
-          BI_binop T_i32 (Binop_i BOI_add);
-          BI_local_set 3%num;
-          BI_local_get 7%num;
-          BI_const_num (VAL_int32 (i32_of 1));
-          BI_binop T_i32 (Binop_i BOI_add);
-          BI_local_tee 6%num;
-          BI_local_set 4%num;
-          BI_local_get 6%num;
-          BI_local_get 2%num;
-          BI_relop T_i32 (Relop_i ROI_ne);
-          BI_br_if 0%num
-    ]
+Definition bubble_sort_bodies: list expr :=
+[
+    [];
+    [   BI_local_get 0%num;
+        BI_const_num (VAL_int32 (i32_of 2));
+        BI_relop T_i32 (Relop_i (ROI_lt SX_S))];
+    [   BI_local_get 0%num;
+        BI_const_num (VAL_int32 (i32_of (-1)));
+        BI_binop T_i32 (Binop_i BOI_add);
+        BI_local_tee 2%num;
+        BI_local_set 3%num;
+        BI_const_num (VAL_int32 (i32_of 0));
+        BI_local_set 4%num];
+    [       BI_local_get 3%num;
+            BI_local_set 5%num;
+            BI_const_num (VAL_int32 (i32_of 0));
+            BI_local_set 6%num];
+    [           BI_local_get 4%num;
+                BI_local_tee 7%num;
+                BI_local_get 0%num;
+                BI_binop T_i32 (Binop_i BOI_sub);
+                BI_const_num (VAL_int32 (i32_of (-2)));
+                BI_relop T_i32 (Relop_i (ROI_gt SX_S))];
+                [];
+                [];
+    [                   BI_local_get 1%num;
+                        BI_local_get 6%num;
+                        BI_local_tee 3%num;
+                        BI_const_num (VAL_int32 (i32_of 2));
+                        BI_binop T_i32 (Binop_i BOI_shl);
+                        BI_binop T_i32 (Binop_i BOI_add);
+                        BI_local_tee 6%num;
+                        BI_load T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |};
+                        BI_local_tee 4%num;
+                        BI_local_get 1%num;
+                        BI_local_get 3%num;
+                        BI_const_num (VAL_int32 (i32_of 1));
+                        BI_binop T_i32 (Binop_i BOI_add);
+                        BI_local_tee 3%num;
+                        BI_const_num (VAL_int32 (i32_of 2));
+                        BI_binop T_i32 (Binop_i BOI_shl);
+                        BI_binop T_i32 (Binop_i BOI_add);
+                        BI_local_tee 8%num;
+                        BI_load T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |};
+                        BI_local_tee 9%num;
+                        BI_relop T_i32 (Relop_i (ROI_le SX_S))];
+      [                 BI_local_get 6%num;
+                        BI_local_get 9%num;
+                        BI_store T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |};
+                        BI_local_get 8%num;
+                        BI_local_get 4%num;
+                        BI_store T_i32 None {| memarg_offset := 0%num;  memarg_align := 0%num |}];
+      [             BI_local_get 3%num;
+                    BI_local_set 6%num;
+                    BI_local_get 3%num;
+                    BI_local_get 5%num;
+                    BI_relop T_i32 (Relop_i ROI_ne)];
+      [ BI_local_get 5%num;
+        BI_const_num (VAL_int32 (i32_of (-1)));
+        BI_binop T_i32 (Binop_i BOI_add);
+        BI_local_set 3%num;
+        BI_local_get 7%num;
+        BI_const_num (VAL_int32 (i32_of 1));
+        BI_binop T_i32 (Binop_i BOI_add);
+        BI_local_tee 6%num;
+        BI_local_set 4%num;
+        BI_local_get 6%num;
+        BI_local_get 2%num;
+        BI_relop T_i32 (Relop_i ROI_ne)]
 ].
 
-Compute List.length bubble_sort_bbs.
-Compute List.length (bbs_of_expr bubble_sort_expr).
-Compute List.fold_left (fun a x => a + List.length (bb_instrs x)) bubble_sort_bbs 0.
-Compute List.fold_left (fun a x => a + List.length (bb_instrs x)) (bbs_of_expr bubble_sort_expr) 0.
-Compute List.map (fun x => List.length (bb_instrs x)) bubble_sort_bbs.
-Compute List.map (fun x => List.length (bb_instrs x)) (bbs_of_expr bubble_sort_expr).
-Compute List.map (fun x => (bb_nesting x)) bubble_sort_bbs.
-Compute List.map (fun x => (bb_nesting x)) (bbs_of_expr bubble_sort_expr).
-Compute List.map (fun x => (bb_br_dest x)) (bbs_pass2 bubble_sort_bbs).
-Compute List.map (fun x => (bb_br_dest x)) (bbs_of_expr bubble_sort_expr).
+Definition bubble_sort_terms: list (option basic_instruction) :=
+[
+    Some (BI_block (BT_id 0%num) []);
+    Some (BI_br_if 0%num);
+    Some (BI_loop  (BT_id 2%num) []);
+    Some (BI_block (BT_id 0%num) []);
+    Some (BI_br_if 0%num);
+    Some (BI_loop (BT_id 4%num) []);
+    Some (BI_block (BT_id 0%num) []);
+    Some (BI_br_if 0%num);
+    None;
+    Some (BI_br_if 0%num);
+    Some (BI_br_if 0%num)
+].
 
-Example bubble_sort: bbs_of_expr bubble_sort_expr = bbs_pass2 bubble_sort_bbs.
+(* Examples based on basic blocks code *)
+Example bb_test8' :
+  bb_terms (bbs_of_expr'' bubble_sort_expr)
+    = bubble_sort_terms.
 Proof. reflexivity.
 Qed.
+
+Example bb_test9' :
+  bb_bodies (bbs_of_expr'' bubble_sort_expr)
+    = bubble_sort_bodies.
+Proof. reflexivity.
+Qed.
+
+(* basic block - bb *)
+(* Record bb: Type :=
+{
+  bb_index:   nat;          (* the index of this bb in the list of bblocks *)
+  bb_instrs:  list basic_instruction; (* code of the bb *)
+  bb_type:    bb_t;         (* effectively the control opcode that created this bb *)
+  bb_nesting: nat;          (* nesting level of the last opcode in the bb *)
+  bb_labels:  list labelidx;(* destination labels used in BR, BR_IF, BR_TABLE instructions *)
+  bb_succ:    list nat;     (* bbs that can be directly reached from this bb *)
+  bb_pred:    list nat;     (* bbs that can directly reach this bb *)
+  bb_br_dest: option nat;   (* for LOOP, BLOCK and IF instructions the bb that's the target 
+                                of a branch for this instruction  *)
+}.
+
+(* bbs_pass2 isn't really a pass, it adds the synthetic bbs to the list *)
+Definition bbs_pass2 (bbs: list bb): list bb :=
+  let i := List.length bbs in
+    bbs ++ [init_bb (i)   BB_exit_end         0 [] [];
+            init_bb (i+1) BB_exit_return      0 [] [];
+            init_bb (i+2) BB_exit_unreachable 0 [] []]
+  .
+
+(* bbs_pass3 determines bb_br_dest *)
+Definition bbs_pass3 (bbs: list bb): list bb :=
+  let bbs_pass3' (b: bb) :=
+    match bb_type b with
+    | BB_loop   => bb_with_br_dest ((bb_index b) + 1) b
+    | BB_block 
+    | BB_if     => 
+        match find
+          (fun b' => ((bb_index b') > (bb_index b)) && ((bb_nesting b') <= (bb_nesting b)))
+          bbs with
+        | Some b' => bb_with_br_dest (bb_index b') b
+        | None    => bb_with_br_dest (List.length bbs) b
+        end
+    | _ => b
+    end
+    in
+  List.map bbs_pass3' bbs.
+
+(* bbs_pass_4 determines the succ *)
+Definition bbs_pass4 (bbs: list bb): list (list nat) :=
+  let idx_of_else (idx: nat) (n: nat): option nat :=
+    let bbs' := sublist idx (List.length bbs - idx) bbs in
+      match find (fun b => (bb_nesting b) >= n) bbs' with
+      | None   => None
+      | Some b => Some (bb_index b)
+      end
+  in
+  let succ_of_bb (idx: nat) (b: bb): list nat :=
+    match bb_type b with
+    | BB_exit_end
+    | BB_exit_return
+    | BB_exit_unreachable => []
+    | BB_unreachable      => [(List.length bbs) + 2]
+    | BB_block
+    | BB_loop             
+    | BB_code             => [(bb_index b) + 1]
+    | BB_if               =>
+        let i := idx_of_else (idx+2) (bb_nesting b) in
+        match i with
+        | None => [ idx + 1 ]
+        | Some i => [ idx + 1; i]
+        end  
+    | BB_br _             => [ 0 ]
+    | BB_br_if _          => [ idx + 1; 0 ]
+    | BB_br_table _ _     => [ 0; 0; 0 ]
+    | BB_return           => [(List.length bbs) + 2]
+    end
+  in
+  mapi succ_of_bb bbs.
+
 
 Definition bb_instr: Type := option basic_instruction.
 
