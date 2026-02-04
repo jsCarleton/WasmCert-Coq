@@ -314,64 +314,7 @@ Program Fixpoint bbs_pass1
               p_bbs := (close_block i bb_acc _)::bbs_acc |}
     end
   end.
-(* Unfortunatey we're left with large number of trivial obligations to
-    satisfy. 
-*)
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
-Next Obligation. split. discriminate. split; discriminate. Qed.
+Solve All Obligations with (split; try discriminate; split; try discriminate).
 
 Definition bbs_of_expr'' (e: expr): list bb :=
   let p := List.fold_left
